@@ -346,7 +346,7 @@
                     }
 
                     var appLocation = raw.filename ? "http://" + _packageBase + "/" + raw.filename : "";
-                    enyo.log("ARCHIVE-PATCH getApplicationDetails id=" + numericId +
+                    console.log("ARCHIVE-PATCH getApplicationDetails id=" + numericId +
                              " service=" + service +
                              " filename=" + (raw.filename || "(none)") +
                              " appLocation=" + appLocation);
@@ -422,7 +422,7 @@
         // _lastStarRating is set by getApplicationDetails before this is called
         // (positive reviews are fetched from inside handleServerResponse for AppDetailsService).
         var breakdown = (sign === "positive" && _lastStarRating > 0)
-            ? {totalCount: 1, averageRating: _lastStarRating}
+            ? {totalCount: 0, averageRating: _lastStarRating}
             : null;
         var resp = {
             body: {
@@ -448,15 +448,31 @@
     var _origShowLess = findApps.AppSummary.prototype.showLess;
     findApps.AppSummary.prototype.showLess = function () {
         _origShowLess.call(this);
-        var note = this.appDetails && this.appDetails.versionNote;
         var versionNode = this.$.versionLbl && this.$.versionLbl.hasNode();
         if (!versionNode) { return; }
-        // Re-use existing injected node if present, otherwise create one.
-        var noteEl = versionNode.nextSibling;
+
+        // versionNode.parentNode is the VFlexBox container — always valid.
+        var containerNode = versionNode.parentNode;
+
+        // Collapse VFlexBox to a single bold line.
+        // containerNode.style.display overrides the -webkit-box class rule inline.
+        containerNode.style.display = "block";
+        // setAttribute replaces the entire style attr, overriding any Enyo-set styles.
+        versionNode.setAttribute("style", "display:inline;font-weight:bold;color:#2e2e2e;");
+        // Find the label (first element sibling before versionNode).
+        var labelNode = versionNode.previousSibling;
+        while (labelNode && labelNode.nodeType !== 1) { labelNode = labelNode.previousSibling; }
+        if (labelNode) { labelNode.style.display = "inline"; }
+
+        // Inject or update the version notes block after the container.
+        var note = this.appDetails && this.appDetails.versionNote;
+        var noteEl = containerNode.nextSibling;
+
         if (noteEl && noteEl.className === "archive-version-note") {
-            // Existing node: clear it if no note, update content if there is one.
+            noteEl.style.marginTop = "14px";
+            noteEl.style.marginLeft = "2px";
             if (note) {
-                noteEl.innerHTML = note.replace(/\r\n/g, "<br>").replace(/\n/g, "<br>");
+                noteEl.lastChild.innerHTML = note.replace(/\r\n/g, "<br>").replace(/\n/g, "<br>");
                 noteEl.style.display = "";
             } else {
                 noteEl.style.display = "none";
@@ -464,9 +480,15 @@
         } else if (note) {
             noteEl = document.createElement("div");
             noteEl.className = "archive-version-note";
-            noteEl.innerHTML = note.replace(/\r\n/g, "<br>").replace(/\n/g, "<br>");
-            // Insert after versionLbl, before the next sibling.
-            versionNode.parentNode.insertBefore(noteEl, versionNode.nextSibling);
+            noteEl.style.marginTop = "14px";
+            noteEl.style.marginLeft = "2px";
+            // Inline styles on the children so behaviour doesn't depend on CSS cache.
+            noteEl.innerHTML =
+                '<div style="font-size:13px;font-weight:bold;color:#2e2e2e;margin-bottom:4px;">Version Notes</div>' +
+                '<div style="font-size:13px;color:#555;white-space:pre-wrap;">' +
+                note.replace(/\r\n/g, "<br>").replace(/\n/g, "<br>") +
+                '</div>';
+            containerNode.parentNode.insertBefore(noteEl, containerNode.nextSibling);
         }
     };
 
@@ -533,6 +555,61 @@
     };
 
     // -----------------------------------------------------------------------
+    // Button label: all archive apps are free, so replace "FREE" with "Install".
+    // $L("FREE") is called in three AppStates and in appdownload.getFormattedPrice.
+    // -----------------------------------------------------------------------
+    if (typeof $L === "function") {
+        var _origDollarL = $L;
+        window.$L = function (s) {
+            if (s === "FREE") { return "Install"; }
+            return _origDollarL.apply(this, arguments);
+        };
+    }
+
+    // -----------------------------------------------------------------------
+    // Window-activation hook
+    //
+    // ApplicationEvents needs to live on a rendered Control to reliably receive
+    // onWindowActivated.  We add one to AppCatalogWindow at create time and route
+    // the event through a global callback slot so the install path can register
+    // a one-shot handler without needing a reference to AppCatalogWindow.
+    // -----------------------------------------------------------------------
+    var _origACWCreate = findApps.AppCatalogWindow.prototype.create;
+    findApps.AppCatalogWindow.prototype.create = function () {
+        console.log("ARCHIVE-PATCH AppCatalogWindow.create override running");
+        _origACWCreate.call(this);
+        this.createComponent({
+            kind: "ApplicationEvents",
+            onWindowActivated:   "archivePatchWindowActivated",
+            onWindowDeactivated: "archivePatchWindowDeactivated",
+            onApplicationRelaunch: "archivePatchRelaunch",
+            onWindowParamsChange:  "archivePatchParamsChange"
+        });
+    };
+    findApps.AppCatalogWindow.prototype.archivePatchWindowActivated = function () {
+        console.log("ARCHIVE-PATCH event: onWindowActivated");
+        if (window._archivePatchOnActivated) {
+            var cb = window._archivePatchOnActivated;
+            window._archivePatchOnActivated = null;
+            setTimeout(cb, 0);
+        }
+    };
+    findApps.AppCatalogWindow.prototype.archivePatchWindowDeactivated = function () {
+        console.log("ARCHIVE-PATCH event: onWindowDeactivated");
+    };
+    findApps.AppCatalogWindow.prototype.archivePatchRelaunch = function () {
+        console.log("ARCHIVE-PATCH event: onApplicationRelaunch");
+        if (window._archivePatchOnActivated) {
+            var cb = window._archivePatchOnActivated;
+            window._archivePatchOnActivated = null;
+            setTimeout(cb, 0);
+        }
+    };
+    findApps.AppCatalogWindow.prototype.archivePatchParamsChange = function () {
+        console.log("ARCHIVE-PATCH event: onWindowParamsChange");
+    };
+
+    // -----------------------------------------------------------------------
     // Install chain
     // -----------------------------------------------------------------------
 
@@ -545,7 +622,8 @@
         var pub      = String(app.publicApplicationId || "");
         var lookupId = /^\d+$/.test(pub) ? pub
                      : /^\d+$/.test(String(app.id || "")) ? String(app.id) : pub;
-        enyo.log("ARCHIVE-PATCH _fetchAppDetails palmId=" + app.publicApplicationId +
+        app._archiveNumericId = lookupId;
+        console.log("ARCHIVE-PATCH _fetchAppDetails palmId=" + app.publicApplicationId +
                  " lookupId=" + lookupId);
         findApps.BaseServer.getACServer().getApplicationDetails(
             null, lookupId,
@@ -563,17 +641,16 @@
     //   - DownloadStateManager._install (normal Get flow)
     //   - AppState.InstallFailed.detailscb (retry flow)
     //
-    // The app stays in InitiatingDownload ("Downloading...") while Preware is open so it
-    // remains in _myApps.  When Preware finishes, launchPointChanges fires and
-    // updateFromInstallNotification (overridden below) transitions the button to Installed.
+    // On success the button resets to Download ("Install") immediately.
+    // Installed state is detected on the next App Catalog launch via the OS app scan.
     findApps.AppInstallService.prototype.install = function (app, successCb, failureCb) {
         var self   = this;
         var ipkUrl = app.packageUrl;
-        enyo.log("ARCHIVE-PATCH AppInstallService.install via Preware ipkUrl=" + ipkUrl +
+        console.log("ARCHIVE-PATCH AppInstallService.install via Preware ipkUrl=" + ipkUrl +
                  " id=" + app.publicApplicationId);
 
         if (!ipkUrl) {
-            enyo.log("ARCHIVE-PATCH AppInstallService.install: no packageUrl");
+            console.log("ARCHIVE-PATCH AppInstallService.install: no packageUrl");
             return;
         }
 
@@ -588,16 +665,35 @@
             delete self.owner[errName];
         }
 
-        // Preware card opened — stay in InitiatingDownload so the app remains in
-        // _myApps and launchPointChanges can find it when the install completes.
+        // Preware card opened — reset button when App Catalog regains focus.
+        // archivePatchWindowActivated (added to AppCatalogWindow.prototype.create above)
+        // fires onWindowActivated and calls whatever is in window._archivePatchOnActivated.
+        // Also re-keys _myApps from Palm UUID to numeric ID so AppList.serialSearch can
+        // find the row (appList items are stored by numeric ID from transformApp, but
+        // updateFromServer changed publicApplicationId to the Palm UUID).
         self.owner[okName] = function () {
-            enyo.log("ARCHIVE-PATCH Preware launched; waiting for launchPointChanges");
+            console.log("ARCHIVE-PATCH Preware launched; waiting for onWindowActivated");
             cleanup();
+            window._archivePatchOnActivated = function () {
+                var numId  = app._archiveNumericId ||
+                             (/^\d+$/.test(String(app.id || "")) ? String(app.id) : null);
+                var palmId = app.publicApplicationId;
+                // updateFromServer changed publicApplicationId from the numeric archive ID to the
+                // Palm UUID (e.g. "com.palm.webos.appscanner"), but _myApps is still keyed by the
+                // numeric ID.  AppDownloadManager.updateDownloadState checks _myApps[publicApplicationId],
+                // so APP_DELETED won't fire unless we restore the numeric ID first.
+                if (numId && palmId !== numId) {
+                    app.publicApplicationId = numId;
+                    console.log("ARCHIVE-PATCH restored publicApplicationId: " + palmId + " -> " + numId);
+                }
+                app.setState("findApps.AppState.Download");
+                console.log("ARCHIVE-PATCH setState(Download) called");
+            };
         };
 
         // applicationManager/open failed — Preware is likely not installed.
         self.owner[errName] = function (inSender, inResponse) {
-            enyo.log("ARCHIVE-PATCH Preware launch failed (is Preware installed?): " +
+            console.log("ARCHIVE-PATCH Preware launch failed (is Preware installed?): " +
                      JSON.stringify(inResponse));
             app.errorCode = "PREWARE_NOT_FOUND";
             app.setState("findApps.AppState.InstallFailed");
@@ -624,7 +720,7 @@
         findApps.AppDownload.prototype.updateFromInstallNotification;
     findApps.AppDownload.prototype.updateFromInstallNotification = function (appDetails) {
         if (appDetails.change === "added") {
-            enyo.log("ARCHIVE-PATCH updateFromInstallNotification: installed " +
+            console.log("ARCHIVE-PATCH updateFromInstallNotification: installed " +
                      this.publicApplicationId);
             if (appDetails.version) { this.installedVersion = appDetails.version; }
             this.serverVersion = this.serverVersion || appDetails.version;
@@ -632,6 +728,48 @@
         } else {
             _origUpdateFromInstallNotification.call(this, appDetails);
         }
+    };
+
+    // _appInstallServiceStatusCB: when appInstallService reports a stale "install failed"
+    // (left over from FAILED_VERIFY attempts before we switched to Preware), call
+    // appInstallService/cancel to clear the record from the daemon's state.  Without this,
+    // the daemon re-broadcasts the failure on every App Catalog launch and may show a
+    // system-level notification banner the app cannot suppress from JS alone.
+    // The original callback is still called; updateFromStatus (overridden below) handles
+    // suppressing the in-app state transition.
+    findApps.AppDownloadManager.prototype._archivePatchNoop = function () {};
+
+    var _origStatusCB = findApps.AppDownloadManager.prototype._appInstallServiceStatusCB;
+    findApps.AppDownloadManager.prototype._appInstallServiceStatusCB = function (inSender, inResponse) {
+        var apps = (inResponse && inResponse.status && inResponse.status.apps)
+                 ? inResponse.status.apps
+                 : (inResponse && inResponse.id ? [inResponse] : []);
+        for (var i = 0; i < apps.length; i++) {
+            var details = apps[i].details || {};
+            if (details.state === "install failed" && apps[i].id) {
+                console.log("ARCHIVE-PATCH canceling stale appInstallService failure for " + apps[i].id);
+                try {
+                    this.$.appinstallservice.cancel(
+                        apps[i].id,
+                        "_archivePatchNoop",
+                        "_archivePatchNoop"
+                    );
+                } catch (e) {}
+            }
+        }
+        _origStatusCB.call(this, inSender, inResponse);
+    };
+
+    // updateFromStatus: suppress stale "install failed" state transitions.
+    // The cancel call above clears the daemon record; this is a belt-and-suspenders
+    // guard for the in-app button state.
+    var _origUpdateFromStatus = findApps.AppDownload.prototype.updateFromStatus;
+    findApps.AppDownload.prototype.updateFromStatus = function (id, appDetails) {
+        if (appDetails && appDetails.state === "install failed") {
+            console.log("ARCHIVE-PATCH updateFromStatus: ignoring stale install failed for " + id);
+            return;
+        }
+        _origUpdateFromStatus.call(this, id, appDetails);
     };
 
     // -----------------------------------------------------------------------

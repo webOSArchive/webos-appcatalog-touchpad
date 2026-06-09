@@ -1,0 +1,26 @@
+{
+  "icon": "../../icon.png",
+  "id": "com.palm.app.enyo-findapps",
+  "keywords": ["pimSt√≤r√®"],
+  "main": "../../index.html",
+  "noWindow": true,
+  "removable": false,
+  "splashBackground": "../../images/splash-screenshot-default.png",
+  "splashicon": "../../icon-256x256.png",
+  "title": "myYHP √Ä√æ√æ √á√\u2020t√\u2020l√≤g01",
+  "type": "web",
+  "uiRevision": 2,
+  "universalSearch": {"search": {
+    "displayName": "myYHP √Ä√æ√æ √á√\u2020t√\u2020l√≤g01",
+    "launchParam": {"common": {
+      "params": {
+        "search": "#{searchTerms}",
+        "type": "query"
+      },
+      "sceneType": "search"
+    }},
+    "url": "com.palm.app.findapps"
+  }},
+  "vendor": "9P2P√\u2020lm",
+  "version": "5.0.2900"
+}

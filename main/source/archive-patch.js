@@ -1,0 +1,654 @@
+// archive-patch.js
+// Bridges com.palm.app.enyo-findapps to the webOS Archive backend.
+// Must load AFTER build.js (listed last in main/depends.js).
+
+(function () {
+    "use strict";
+
+    var API_BASE = "https://appcatalog.webosarchive.org/WebService/";
+    // Each request gets its own unique key so the server always returns full
+    // data and never sends back cached-null entries from a prior request.
+    function makeKey() {
+        return "fap-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    }
+
+    // Updated asynchronously by the getConfig.php call below.
+    // All URL construction is lazy (called during XHR callbacks),
+    // so config will have arrived before any URL is needed.
+    var _imageBase   = "http://appcatalog.webosarchive.org/AppImages/";
+    var _packageBase = "appstorage.webosarchive.org/packages";
+
+    // -----------------------------------------------------------------------
+    // First-run guard (belt-and-suspenders; also done in pre-init.js)
+    // -----------------------------------------------------------------------
+    try {
+        if (!localStorage.getItem("com.palm.app.findapps.country")) {
+            localStorage.setItem("com.palm.app.findapps.country", "US");
+        }
+        if (!localStorage.getItem("com.palm.app.findapps.terms")) {
+            localStorage.setItem("com.palm.app.findapps.terms", "7th Aug 2009");
+        }
+    } catch (e) {}
+
+    // -----------------------------------------------------------------------
+    // Categories
+    // -----------------------------------------------------------------------
+    var CATEGORIES = [
+        {id: 0,  categoryId: "CAT_HOME",   label: "Home",               name: "Home",               iconLocation: "category-icons/home/",               subcategories: []},
+        {id: 1,  categoryId: "CAT_BOOKS",  label: "Books",              name: "Books",              iconLocation: "category-icons/books/",              subcategories: []},
+        {id: 2,  categoryId: "CAT_BIZ",    label: "Business",           name: "Business",           iconLocation: "category-icons/business/",           subcategories: []},
+        {id: 3,  categoryId: "CAT_PICKS",  label: "Curator's Choice",   name: "Curator's Choice",   iconLocation: "category-icons/home/",               subcategories: []},
+        {id: 4,  categoryId: "CAT_EDU",    label: "Education",          name: "Education",          iconLocation: "category-icons/education/",          subcategories: []},
+        {id: 5,  categoryId: "CAT_ENT",    label: "Entertainment",      name: "Entertainment",      iconLocation: "category-icons/entertainment/",      subcategories: []},
+        {id: 6,  categoryId: "CAT_FIN",    label: "Finance",            name: "Finance",            iconLocation: "category-icons/finance/",            subcategories: []},
+        {id: 7,  categoryId: "CAT_FOOD",   label: "Food",               name: "Food",               iconLocation: "category-icons/food/",               subcategories: []},
+        {id: 8,  categoryId: "CAT_GAMES",  label: "Games",              name: "Games",              iconLocation: "category-icons/games/",              subcategories: []},
+        {id: 9,  categoryId: "CAT_HLTH",   label: "Health & Fitness",   name: "Health & Fitness",   iconLocation: "category-icons/health-and-fitness/", subcategories: []},
+        {id: 10, categoryId: "CAT_LIFE",   label: "Lifestyle",          name: "Lifestyle",          iconLocation: "category-icons/lifestyle/",          subcategories: []},
+        {id: 11, categoryId: "CAT_MUSIC",  label: "Music",              name: "Music",              iconLocation: "category-icons/music/",              subcategories: []},
+        {id: 12, categoryId: "CAT_NAV",    label: "Navigation",         name: "Navigation",         iconLocation: "category-icons/navigation/",         subcategories: []},
+        {id: 13, categoryId: "CAT_NEWS",   label: "News",               name: "News",               iconLocation: "category-icons/news/",               subcategories: []},
+        {id: 14, categoryId: "CAT_PHOTO",  label: "Photography",        name: "Photography",        iconLocation: "category-icons/photography/",        subcategories: []},
+        {id: 15, categoryId: "CAT_PROD",   label: "Productivity",       name: "Productivity",       iconLocation: "category-icons/productivity/",       subcategories: []},
+        {id: 16, categoryId: "CAT_REF",    label: "Reference",          name: "Reference",          iconLocation: "category-icons/reference/",          subcategories: []},
+        {id: 17, categoryId: "CAT_RETRO",  label: "Revisionist History",name: "Revisionist History",iconLocation: "category-icons/home/",               subcategories: []},
+        {id: 18, categoryId: "CAT_SOC",    label: "Social Networking",  name: "Social Networking",  iconLocation: "category-icons/social-networking/",  subcategories: []},
+        {id: 19, categoryId: "CAT_SPORTS", label: "Sports",             name: "Sports",             iconLocation: "category-icons/sports/",             subcategories: []},
+        {id: 20, categoryId: "CAT_TRAVEL", label: "Travel",             name: "Travel",             iconLocation: "category-icons/travel/",             subcategories: []},
+        {id: 21, categoryId: "CAT_WTHR",   label: "Weather",            name: "Weather",            iconLocation: "category-icons/weather/",            subcategories: []}
+    ];
+
+    var CAT_ID_TO_NAME = {};
+    var CAT_STRING_ID_TO_NAME = {};
+    CATEGORIES.forEach(function (c) {
+        if (c.id > 0) {
+            CAT_ID_TO_NAME[c.id] = c.label;
+            CAT_STRING_ID_TO_NAME[c.categoryId] = c.label;
+        }
+    });
+
+    // acquireListPage passes sub_categories.getValue() which returns the string
+    // categoryId ("CAT_BOOKS") set by renderSubCategories, while BrowseAppsService
+    // from refresh() passes the numeric topCategory.id.  Normalise both to the
+    // display name so URL building and the stale-response guard are consistent.
+    function toCatName(catId) {
+        if (!catId || catId === 0) { return "All"; }
+        if (typeof catId === "number") { return CAT_ID_TO_NAME[catId] || "All"; }
+        var n = parseInt(catId, 10);
+        if (!isNaN(n)) { return CAT_ID_TO_NAME[n] || "All"; }
+        return CAT_STRING_ID_TO_NAME[catId] || "All";
+    }
+
+    // -----------------------------------------------------------------------
+    // Synthetic session
+    // -----------------------------------------------------------------------
+    // Button order matches the 3-button RadioGroup in build.js: Recommended(0), Newest(1), All(2).
+    // queryFragment is the sort mode passed to getMuseumMaster.php:
+    //   "recommended" = recommendation_order DESC  (default)
+    //   "recent"      = last_modified_time DESC
+    //   "alpha"       = alphabetical (A-Z)
+    var FAKE_SESSION = {
+        categories:    CATEGORIES,
+        queryButtons: {
+            HOME: [
+                {queryId: "HOME-DartfishQuery1", queryFragment: "recommended"},  // Recommended (default)
+                {queryId: "HOME-DartfishQuery2", queryFragment: "recent"},       // Newest
+                {queryId: "HOME-DartfishQuery3", queryFragment: "alpha"},        // All (A-Z)
+                {queryId: "HOME-DartfishQuery4", queryFragment: "recommended"}   // (unused 4th slot)
+            ],
+            DEFAULT: [
+                {queryId: "DEFAULT-DartfishQuery5", queryFragment: "recommended"},  // Recommended (default)
+                {queryId: "DEFAULT-DartfishQuery6", queryFragment: "recent"},       // Newest
+                {queryId: "DEFAULT-DartfishQuery7", queryFragment: "alpha"},        // All (A-Z)
+                {queryId: "DEFAULT-DartfishQuery8", queryFragment: "recommended"}   // (unused)
+            ]
+        },
+        deviceProperties:      {country: "US"},
+        accountInfo:           {accountId: 1, isUserAllowedUpdateCountry: "true"},
+        supportInfo:           {appFilterOn: false},
+        purchasedApplications: {apps: []}
+    };
+
+    // -----------------------------------------------------------------------
+    // App-summary cache: preserves title/author for detail responses.
+    // -----------------------------------------------------------------------
+    var _cache = {};
+
+    // Curator star rating (1-5) from the most recent getApplicationDetails response.
+    // Stashed here so getAppReviewsList can include it in ratingsBreakdown.
+    // Positive reviews are requested from inside handleServerResponse for AppDetailsService,
+    // so by the time the mock fires, this variable is already set.
+    var _lastStarRating = 0;
+
+    // Tracks the total item count returned by the server for the most recent
+    // BrowseAppsService request.  appListChanged reads this to extend the sparse
+    // array so the VirtualList knows the full scroll height before page 2 loads.
+    var _pendingTotalCount = 0;
+
+    // Category name in-flight for BrowseAppsService; used to discard stale
+    // GetMoreAppsService callbacks that arrive after the user switched category.
+    // Stored as the display name (e.g. "Books") so numeric ids and string
+    // categoryIds ("CAT_BOOKS") compare equal via toCatName().
+    var _activeCatName = null;
+
+    function makeIconUrl(relPath) {
+        if (!relPath) { return ""; }
+        if (relPath.indexOf("://") !== -1) { return relPath; }
+        return _imageBase + relPath.toLowerCase();
+    }
+
+    function transformApp(app) {
+        var iconUri = makeIconUrl(app.appIcon);
+        var summary = {
+            id:                  app.id,
+            publicApplicationId: String(app.id),
+            title:               app.title   || "",
+            author:              app.author  || "",
+            creator:             app.author  || "",
+            developerName:       app.author  || "",
+            summary:             app.summary || "",
+            description:         app.summary || "",
+            ratingCount:         0,
+            averageRating:       app.starRating || 0,
+            price:               0,
+            free:                true,
+            appSize:             0,
+            version:             app.version || "",
+            appIcon:             iconUri,
+            images: [
+                {imageKey: "icon/64x64", uri: iconUri},
+                {imageKey: "icon/48x48", uri: iconUri}
+            ],
+            badges: (app.TouchPad && !app.Pre && !app.Pixi && !app.Pre2 && !app.Pre3 && !app.Veer)
+                    ? ["touchpad_exclusive"] : []
+        };
+        _cache[String(app.id)] = summary;
+        return summary;
+    }
+
+    // -----------------------------------------------------------------------
+    // Callback helpers
+    // handler signature: (WebServiceComponent, json, requestObj, propsObj, errors)
+    // propsObj must carry `service` for switch-on-service handlers.
+    //
+    // Most callers use onSuccess/onFailure, but DownloadStateManager._fetchAppDetails
+    // uses onResponse for both outcomes (single handler, checks errors array length).
+    // -----------------------------------------------------------------------
+    function callSuccess(inProps, response) {
+        var fakeReq = {xhr: {status: 200}, response: response};
+        var handler = inProps.onSuccess || inProps.onResponse;
+        inProps.scope[handler](null, response, fakeReq, inProps, []);
+    }
+
+    function callFailure(inProps, status, errors) {
+        var fakeReq = {xhr: {status: status || 0}, response: {}};
+        var handler = inProps.onFailure || inProps.onResponse;
+        if (handler) {
+            inProps.scope[handler](null, {}, fakeReq, inProps, errors || ["ARCHIVE_ERR"]);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // DummyConfig — installed synchronously so the Palm service bypasses
+    // in accountservices.js and deviceprofile.js are active before the app
+    // creates any components or calls getSession.
+    // -----------------------------------------------------------------------
+    AppCatalog.Config.DummyConfig = {
+        _env: {
+            _serverUrl:        API_BASE,
+            _paymentServerUrl: API_BASE
+        },
+        _token:               "archive-user",
+        _email:               "archive@webosarchive.org",
+        _deviceId:            "touchpad-archive",
+        _softwareBuildBranch: "open",
+        _googlePropertyId:    "",
+        _carrier:             {_mcc: "310", _mnc: "410", _shortName: "archive"}
+    };
+
+    // -----------------------------------------------------------------------
+    // ACServer overrides — also installed synchronously for the same reason.
+    // -----------------------------------------------------------------------
+
+    findApps.ACServer.prototype.getSession = function (service, inProps) {
+        var resp    = {results: {body: {response: FAKE_SESSION}}};
+        var fakeReq = {xhr: {status: 200}, response: resp};
+        setTimeout(function () {
+            inProps.scope[inProps.onSuccess](null, resp, fakeReq, inProps, []);
+        }, 0);
+    };
+
+    findApps.ACServer.prototype.getAppList = function (params, service, inProps) {
+        inProps.service = service;
+
+        // Normalise to display name so numeric ids and string categoryIds compare equal.
+        var catName = toCatName(params.categoryid);
+        if (service === "BrowseAppsService") {
+            _activeCatName = catName;
+        }
+
+        var url;
+        if (params.packageIds && params.packageIds.length > 0) {
+            url = API_BASE + "getMuseumMaster.php?useAppId=true" +
+                  "&appIds=" + encodeURIComponent(params.packageIds.join(",")) +
+                  "&key=" + makeKey();
+        } else {
+            var pageSize = params.count || AppCatalog.Config.defaultPageSize;
+            var page     = Math.floor((params.startPosition || 0) / pageSize);
+
+            // queryFragment carries the sort mode set via the All/Recommended/Newest buttons.
+            // Valid values from the API: "alpha", "recommended", "recent".
+            var qf = params.queryFragment || "";
+            var sortOrder = (qf === "recommended" || qf === "recent" || qf === "alpha")
+                            ? qf
+                            : "recent";
+
+            url = API_BASE + "getMuseumMaster.php?" +
+                  "device=All" +
+                  "&category=" + encodeURIComponent(catName) +
+                  "&page=" + page +
+                  "&count=" + pageSize +
+                  "&key=" + makeKey() +
+                  "&hide_missing=true" +
+                  "&sort=" + sortOrder;
+        }
+
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", url, true);
+        xhr.onload = function () {
+            if (xhr.status === 200) {
+                var raw;
+                try { raw = JSON.parse(xhr.responseText); } catch (e) {}
+                if (raw && raw.data) {
+                    // Discard stale GetMoreApps responses that arrived after the
+                    // user switched to a different category.
+                    if (service === "GetMoreAppsService" && catName !== _activeCatName) {
+                        return;
+                    }
+
+                    var apps      = raw.data.filter(function (a) { return a && a.id; });
+                    var summaries = apps.map(transformApp);
+
+                    // Use the real server total so the VirtualList scroll area
+                    // covers the full list.  appListChanged will extend appList to
+                    // this length so unloaded slots are sparse (undefined) rather
+                    // than absent, letting getAppItem return a blank placeholder and
+                    // allowing nextPage/acquireListPage to fire.
+                    var total = (raw.extraData && raw.extraData.listCount) || summaries.length;
+                    if (service === "BrowseAppsService") {
+                        _pendingTotalCount = total;
+                    }
+
+                    var listResp = {totalCount: total};
+                    if (summaries.length > 0) {
+                        listResp.appSummary = summaries.length === 1 ? summaries[0] : summaries;
+                    }
+                    callSuccess(inProps, {OutGetAppList: {appList: listResp}});
+                    return;
+                }
+            }
+            callFailure(inProps, xhr.status, ["CATALOG_FETCH_FAILED"]);
+        };
+        xhr.onerror = function () { callFailure(inProps, 0, ["CATALOG_NET_ERR"]); };
+        xhr.send();
+    };
+
+    findApps.ACServer.prototype.getApplicationDetails = function (appId, packageId, locale, service, ignoreCache, inProps) {
+        inProps.service = service;
+        // Callers supply either (null, publicApplicationId) or (app.id, app.publicApplicationId).
+        // After updateFromServer, publicApplicationId is a Palm UUID ("com.palm.app.maps") while
+        // app.id is the numeric archive ID.  Prefer whichever of the two is all-digits.
+        var _pkg = String(packageId || "");
+        var _id  = String(appId     || "");
+        var numericId = /^\d+$/.test(_pkg) ? _pkg
+                      : /^\d+$/.test(_id)  ? _id
+                      : _pkg || _id;
+        var url = API_BASE + "getMuseumDetails.php?id=" + encodeURIComponent(numericId);
+
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", url, true);
+        xhr.onload = function () {
+            if (xhr.status === 200) {
+                var raw;
+                try { raw = JSON.parse(xhr.responseText); } catch (e) {}
+                if (raw) {
+                    var cached  = _cache[numericId] || {};
+                    var iconUri = cached.appIcon || makeIconUrl(raw.appIcon || "");
+
+                    // Stash for ratingsBreakdown in the upcoming positive-reviews mock call.
+                    _lastStarRating = raw.starRating || 0;
+
+                    var images = [];
+                    if (iconUri) {
+                        images.push({imageKey: "icon/64x64", uri: iconUri});
+                        images.push({imageKey: "icon/48x48", uri: iconUri});
+                    }
+                    if (raw.images) {
+                        var ssIdx = 0;
+                        for (var k in raw.images) {
+                            var img = raw.images[k];
+                            if (img && img.screenshot) {
+                                ssIdx++;
+                                var ssUri = makeIconUrl(img.screenshot);
+                                var tbUri = makeIconUrl(img.thumbnail || img.screenshot);
+                                // ThumbnailImageScroller looks up keys like
+                                // "screenshot/1/landscape/480x320/tb" and "screenshot/1/portrait/320x480/tb".
+                                // Add both so the scroller finds the image regardless of which it tries first.
+                                var lsKey = "screenshot/" + ssIdx + "/landscape/480x320/tb";
+                                var psKey = "screenshot/" + ssIdx + "/portrait/320x480/tb";
+                                images.push({imageKey: lsKey, uri: tbUri});
+                                images.push({imageKey: psKey, uri: tbUri});
+                                // Carousel keys (separate resolution slots); fall back to same URL.
+                                images.push({imageKey: "screenshot/" + ssIdx + "/landscape/768x576/tb", uri: ssUri});
+                                images.push({imageKey: "screenshot/" + ssIdx + "/portrait/576x768/tb",  uri: ssUri});
+                            }
+                        }
+                    }
+
+                    var appLocation = raw.filename ? "http://" + _packageBase + "/" + raw.filename : "";
+                    enyo.log("ARCHIVE-PATCH getApplicationDetails id=" + numericId +
+                             " service=" + service +
+                             " filename=" + (raw.filename || "(none)") +
+                             " appLocation=" + appLocation);
+
+                    callSuccess(inProps, {OutGetAppDetailV2: {appDetail: {
+                        id:                  numericId,
+                        // publicApplicationId carries the Palm package ID (e.g. "com.palm.app.maps")
+                        // so the OS can cross-reference install-state via launchPointChanges.
+                        // _fetchAppDetails is overridden below to use app.id (numericId) for
+                        // archive API calls instead of this UUID.
+                        publicApplicationId: raw.publicApplicationId || numericId,
+                        title:               cached.title  || raw.title       || "",
+                        creator:             raw.copyright || cached.author   || "",
+                        author:              raw.copyright || cached.author   || "",
+                        developerName:       raw.copyright || cached.author   || "",
+                        description:         raw.description                  || "",
+                        version:             raw.version                      || "",
+                        versionNote:         raw.versionNote                  || "",
+                        lastModifiedTime:    raw.lastModifiedTime              || "",
+                        vendorid:            raw.vendorId  || numericId,
+                        // Use at least 1 for size fields so AppState.Download.install doesn't
+                        // re-call _fetchAppDetails on every tap (it checks !packageSize || !installSize).
+                        appSize:             raw.appSize                      || 1,
+                        installSize:         raw.installSize                  || 1,
+                        // islocationbased: false prevents the undefined-check in AppState.Download.install
+                        // from forcing a redundant _fetchAppDetails call on every tap.
+                        islocationbased:     false,
+                        price:               0,
+                        free:                true,
+                        averageRating:       raw.starRating                   || 0,
+                        ratingCount:         0,
+                        supportURL:          raw.supportURL || raw.homeURL    || "",
+                        homeURL:             raw.homeURL                      || "",
+                        images:              images,
+                        appIcon:             iconUri,
+                        // appLocation is read by appdownload.js as packageUrl, passed through
+                        // our _install override to Preware for the actual on-device installation.
+                        appLocation:         appLocation,
+                        // and .connectors without guarding; provide a safe stub.
+                        attributes: {provides: {noApp: false, services: null, dockMode: false, universalSearch: false, connectors: null}}
+                    }}});
+                    return;
+                }
+            }
+            callFailure(inProps, xhr.status, ["DETAIL_FETCH_FAILED"]);
+        };
+        xhr.onerror = function () { callFailure(inProps, 0, ["DETAIL_NET_ERR"]); };
+        xhr.send();
+    };
+
+    findApps.ACServer.prototype.getCountryList = function (service, inProps) {
+        inProps.service = service;
+        var resp    = [{id: 23, code: "US", name: "UNITED STATES"}];
+        var fakeReq = {xhr: {status: 200}, response: resp};
+        setTimeout(function () {
+            inProps.scope[inProps.onSuccess](null, resp, fakeReq, inProps, []);
+        }, 0);
+    };
+
+    findApps.ACServer.prototype.getListOfUpdatableApps = function (packageNames, service, inProps) {
+        inProps.service = service;
+        var resp    = {OutGetUpdatableApps: {appList: {totalCount: 0, appSummary: []}}};
+        var fakeReq = {xhr: {status: 200}, response: resp};
+        setTimeout(function () {
+            inProps.scope[inProps.onSuccess](null, resp, fakeReq, inProps, []);
+        }, 0);
+    };
+
+    findApps.ACServer.prototype.getAppReviewsList = function (appid, packageid, sign, offset, count, service, inProps) {
+        inProps.service = service;
+        // Positive reviews response includes ratingsBreakdown so the averageRatings
+        // widget shows the curator's star rating from the archive.
+        // _lastStarRating is set by getApplicationDetails before this is called
+        // (positive reviews are fetched from inside handleServerResponse for AppDetailsService).
+        var breakdown = (sign === "positive" && _lastStarRating > 0)
+            ? {totalCount: 1, averageRating: _lastStarRating}
+            : null;
+        var resp = {
+            body: {
+                error: "",
+                response: {totalCount: 0, reviews: [], ratingsBreakdown: breakdown}
+            }
+        };
+        var fakeReq = {xhr: {status: 200}, response: resp};
+        setTimeout(function () {
+            inProps.scope[inProps.onSuccess](null, resp, fakeReq, inProps, []);
+        }, 0);
+    };
+
+    // -----------------------------------------------------------------------
+    // AppSummary: add Version Note display below the version number.
+    //
+    // AppSummary.showLess is called each time appDetails changes.  We hook it
+    // to inject a plain DOM element after versionLbl so the curator's
+    // restoration note appears right under the version number.  Direct DOM
+    // injection is used because AppSummary's component tree is pre-declared
+    // and cannot be extended from a prototype patch without re-rendering.
+    // -----------------------------------------------------------------------
+    var _origShowLess = findApps.AppSummary.prototype.showLess;
+    findApps.AppSummary.prototype.showLess = function () {
+        _origShowLess.call(this);
+        var note = this.appDetails && this.appDetails.versionNote;
+        var versionNode = this.$.versionLbl && this.$.versionLbl.hasNode();
+        if (!versionNode) { return; }
+        // Re-use existing injected node if present, otherwise create one.
+        var noteEl = versionNode.nextSibling;
+        if (noteEl && noteEl.className === "archive-version-note") {
+            // Existing node: clear it if no note, update content if there is one.
+            if (note) {
+                noteEl.innerHTML = note.replace(/\r\n/g, "<br>").replace(/\n/g, "<br>");
+                noteEl.style.display = "";
+            } else {
+                noteEl.style.display = "none";
+            }
+        } else if (note) {
+            noteEl = document.createElement("div");
+            noteEl.className = "archive-version-note";
+            noteEl.innerHTML = note.replace(/\r\n/g, "<br>").replace(/\n/g, "<br>");
+            // Insert after versionLbl, before the next sibling.
+            versionNode.parentNode.insertBefore(noteEl, versionNode.nextSibling);
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Pagination infrastructure
+    //
+    // Problem: the original code capped totalCount at the loaded-page size to
+    // avoid a crash when Enyo rendered unloaded list slots with {}→setAppItem({})
+    // →setSrc(undefined)→crash.  This prevented scroll-triggered fetches because
+    // the VirtualList thought the list ended at item 49.
+    //
+    // Solution:
+    //  1. appListChanged extends the sparse array to the real server total so the
+    //     VirtualList scroll area reflects the full list.
+    //  2. getAppItem returns true for empty slots by rendering a blank placeholder,
+    //     so the VirtualList knows the list continues beyond the loaded page.
+    //  3. nextPage/acquireListPage fire normally because !appList[index] is true
+    //     for sparse (undefined) slots.
+    //  4. appendToList does sparse placement at the first empty slot instead of
+    //     concat, so items end up at the correct indices.
+    //  5. setAppItem is guarded against missing images/appIcon to prevent any
+    //     residual crash from bad data.
+    // -----------------------------------------------------------------------
+
+    var _origAppListChanged = findApps.AppList.prototype.appListChanged;
+    findApps.AppList.prototype.appListChanged = function () {
+        if (_pendingTotalCount > 0 && _pendingTotalCount > this.appList.length) {
+            this.appList.length = _pendingTotalCount;
+        }
+        _pendingTotalCount = 0;
+        _origAppListChanged.call(this);
+    };
+
+    findApps.AppList.prototype.appendToList = function (list) {
+        var al = this.appList;
+        var insertAt = 0;
+        while (insertAt < al.length && al[insertAt]) { insertAt++; }
+        for (var j = 0; j < list.length; j++) { al[insertAt + j] = list[j]; }
+        this.appListUpdated();
+    };
+
+    var PLACEHOLDER_APP = {
+        publicApplicationId: "", title: "", author: "",
+        appIcon: "", images: [], ratingCount: 0, averageRating: 0,
+        badges: [], price: 0, free: true
+    };
+
+    var _origGetAppItem = findApps.AppList.prototype.getAppItem;
+    findApps.AppList.prototype.getAppItem = function (inSender, inIndex) {
+        if (!this.appList || this.appList.length === 0) { return false; }
+        if (inIndex >= 0 && inIndex < this.appList.length && !this.appList[inIndex]) {
+            this.$.app_item.setAppItem(PLACEHOLDER_APP);
+            return true;
+        }
+        return _origGetAppItem.call(this, inSender, inIndex);
+    };
+
+    var _origSetAppItem = findApps.AppItem.prototype.setAppItem;
+    findApps.AppItem.prototype.setAppItem = function (appItem) {
+        if (!appItem) { return; }
+        if (!appItem.images) { appItem.images = []; }
+        if (appItem.appIcon === undefined) { appItem.appIcon = ""; }
+        _origSetAppItem.call(this, appItem);
+    };
+
+    // -----------------------------------------------------------------------
+    // Install chain
+    // -----------------------------------------------------------------------
+
+    // _fetchAppDetails: numeric-ID detection so either calling convention works.
+    //   List-view (before updateFromServer): publicApplicationId = numeric string "1234",
+    //     app.id = Enyo's auto-assigned component integer (NOT the archive ID).
+    //   Detail-view / retry (after updateFromServer): publicApplicationId = Palm UUID
+    //     "com.palm.app.maps", app.id = numeric archive ID string "1234".
+    findApps.DownloadStateManager.prototype._fetchAppDetails = function (app, callback) {
+        var pub      = String(app.publicApplicationId || "");
+        var lookupId = /^\d+$/.test(pub) ? pub
+                     : /^\d+$/.test(String(app.id || "")) ? String(app.id) : pub;
+        enyo.log("ARCHIVE-PATCH _fetchAppDetails palmId=" + app.publicApplicationId +
+                 " lookupId=" + lookupId);
+        findApps.BaseServer.getACServer().getApplicationDetails(
+            null, lookupId,
+            enyo.g11n.currentLocale().toISOString(), "GDBAppDetailsSvc", true, {
+                onResponse: "detailscb",
+                scope: this,
+                app: app,
+                callback: callback
+            });
+    };
+
+    // AppInstallService.install: use Preware (applicationManager/open) instead of
+    // com.palm.appInstallService, whose HP/Palm signature verification servers have been
+    // offline since 2015.  Overriding the prototype covers every caller with one patch:
+    //   - DownloadStateManager._install (normal Get flow)
+    //   - AppState.InstallFailed.detailscb (retry flow)
+    //
+    // The app stays in InitiatingDownload ("Downloading...") while Preware is open so it
+    // remains in _myApps.  When Preware finishes, launchPointChanges fires and
+    // updateFromInstallNotification (overridden below) transitions the button to Installed.
+    findApps.AppInstallService.prototype.install = function (app, successCb, failureCb) {
+        var self   = this;
+        var ipkUrl = app.packageUrl;
+        enyo.log("ARCHIVE-PATCH AppInstallService.install via Preware ipkUrl=" + ipkUrl +
+                 " id=" + app.publicApplicationId);
+
+        if (!ipkUrl) {
+            enyo.log("ARCHIVE-PATCH AppInstallService.install: no packageUrl");
+            return;
+        }
+
+        var rand    = ("" + Date.now()).slice(-6);
+        var svcName = "prewareSvc"  + rand;
+        var okName  = svcName + "Ok";
+        var errName = svcName + "Err";
+
+        function cleanup() {
+            self.owner.$[svcName] && self.owner.$[svcName].destroy();
+            delete self.owner[okName];
+            delete self.owner[errName];
+        }
+
+        // Preware card opened — stay in InitiatingDownload so the app remains in
+        // _myApps and launchPointChanges can find it when the install completes.
+        self.owner[okName] = function () {
+            enyo.log("ARCHIVE-PATCH Preware launched; waiting for launchPointChanges");
+            cleanup();
+        };
+
+        // applicationManager/open failed — Preware is likely not installed.
+        self.owner[errName] = function (inSender, inResponse) {
+            enyo.log("ARCHIVE-PATCH Preware launch failed (is Preware installed?): " +
+                     JSON.stringify(inResponse));
+            app.errorCode = "PREWARE_NOT_FOUND";
+            app.setState("findApps.AppState.InstallFailed");
+            cleanup();
+        };
+
+        self.owner.createComponent({
+            name:    svcName,
+            kind:    "PalmService",
+            service: "palm://com.palm.applicationManager/",
+            owner:   self.owner
+        });
+
+        self.owner.$[svcName].call(
+            { id: "org.webosinternals.preware", params: { type: "install", file: ipkUrl } },
+            { method: "open", onSuccess: okName, onFailure: errName }
+        );
+    };
+
+    // updateFromInstallNotification: the original re-initializes the current state on
+    // change="added" without transitioning to Installed.  Override to properly mark the
+    // app as installed when launchPointChanges fires after a Preware install.
+    var _origUpdateFromInstallNotification =
+        findApps.AppDownload.prototype.updateFromInstallNotification;
+    findApps.AppDownload.prototype.updateFromInstallNotification = function (appDetails) {
+        if (appDetails.change === "added") {
+            enyo.log("ARCHIVE-PATCH updateFromInstallNotification: installed " +
+                     this.publicApplicationId);
+            if (appDetails.version) { this.installedVersion = appDetails.version; }
+            this.serverVersion = this.serverVersion || appDetails.version;
+            this.setState("findApps.AppState.Installed");
+        } else {
+            _origUpdateFromInstallNotification.call(this, appDetails);
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Fetch live config to get the actual image host (load-balanced).
+    // Updates _imageBase; image URLs are built lazily so this races fine.
+    // -----------------------------------------------------------------------
+    var cfgXhr = new XMLHttpRequest();
+    cfgXhr.open("GET", API_BASE + "getConfig.php", true);
+    cfgXhr.onload = function () {
+        if (cfgXhr.status === 200) {
+            try {
+                var cfg = JSON.parse(cfgXhr.responseText);
+                if (cfg && cfg.image_host)   { _imageBase   = "http://" + cfg.image_host + "/"; }
+                if (cfg && cfg.package_host) { _packageBase = cfg.package_host; }
+            } catch (e) {}
+        }
+    };
+    cfgXhr.send();
+
+}());

@@ -5,6 +5,18 @@
 (function () {
     "use strict";
 
+    // Inject archive-specific CSS rules that can't go through the Enyo build.
+    // Details.css is a source file but isn't compiled into build.css without
+    // the Enyo toolchain, so all CSS additions live here instead.
+    (function () {
+        var s = document.createElement("style");
+        s.textContent =
+            // Re-apply the row separator that was previously on .review-list-rows .enyo-row
+            // (the hidden "Was this review useful?" row).  Now on the container itself.
+            ".review-list-rows{border-bottom:1px solid #d9d9d9;padding-bottom:9px;}";
+        document.head.appendChild(s);
+    }());
+
     var API_BASE = "https://appcatalog.webosarchive.org/WebService/";
     // Each request gets its own unique key so the server always returns full
     // data and never sends back cached-null entries from a prior request.
@@ -148,7 +160,7 @@
             developerName:       app.author  || "",
             summary:             app.summary || "",
             description:         app.summary || "",
-            ratingCount:         0,
+            ratingCount:         app.reviewCount || 0,
             averageRating:       app.starRating || 0,
             price:               0,
             free:                true,
@@ -228,7 +240,10 @@
         }
 
         var url;
-        if (params.packageIds && params.packageIds.length > 0) {
+        if (service === "SearchAppsService" || service === "SearchMoreAppsService") {
+            url = API_BASE + "getSearchResults.php?app=" +
+                  encodeURIComponent(params.queryStr || "");
+        } else if (params.packageIds && params.packageIds.length > 0) {
             url = API_BASE + "getMuseumMaster.php?useAppId=true" +
                   "&appIds=" + encodeURIComponent(params.packageIds.join(",")) +
                   "&key=" + makeKey();
@@ -417,23 +432,88 @@
 
     findApps.ACServer.prototype.getAppReviewsList = function (appid, packageid, sign, offset, count, service, inProps) {
         inProps.service = service;
-        // Positive reviews response includes ratingsBreakdown so the averageRatings
-        // widget shows the curator's star rating from the archive.
-        // _lastStarRating is set by getApplicationDetails before this is called
-        // (positive reviews are fetched from inside handleServerResponse for AppDetailsService).
-        var breakdown = (sign === "positive" && _lastStarRating > 0)
-            ? {totalCount: 0, averageRating: _lastStarRating}
-            : null;
-        var resp = {
-            body: {
-                error: "",
-                response: {totalCount: 0, reviews: [], ratingsBreakdown: breakdown}
+
+        // Resolve to the numeric archive ID — same logic as getApplicationDetails.
+        var _pkg = String(packageid || "");
+        var _id  = String(appid     || "");
+        var numericId = /^\d+$/.test(_pkg) ? _pkg
+                      : /^\d+$/.test(_id)  ? _id
+                      : _pkg || _id;
+
+        var url = API_BASE + "getMuseumReviews.php" +
+                  "?id="     + encodeURIComponent(numericId) +
+                  "&sign="   + encodeURIComponent(sign || "positive") +
+                  "&offset=" + (offset || 0) +
+                  "&count="  + (count  || 10);
+
+        function makeResp(raw) {
+            // Use the real ratingsBreakdown from the server if available;
+            // fall back to the curator star rating for apps with no archived reviews.
+            var breakdown = (raw && raw.ratingsBreakdown) ||
+                ((sign === "positive" && _lastStarRating > 0)
+                    ? {totalCount: 0, averageRating: _lastStarRating}
+                    : null);
+            return {
+                body: {
+                    error: "",
+                    response: {
+                        totalCount:       (raw && raw.totalCount) || 0,
+                        reviews:          (raw && raw.reviews)    || [],
+                        ratingsBreakdown: breakdown
+                    }
+                }
+            };
+        }
+
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", url, true);
+        xhr.onload = function () {
+            var raw = null;
+            if (xhr.status === 200) {
+                try { raw = JSON.parse(xhr.responseText); } catch (e) {}
             }
+            callSuccess(inProps, makeResp(raw));
         };
-        var fakeReq = {xhr: {status: 200}, response: resp};
-        setTimeout(function () {
-            inProps.scope[inProps.onSuccess](null, resp, fakeReq, inProps, []);
-        }, 0);
+        xhr.onerror = function () { callSuccess(inProps, makeResp(null)); };
+        xhr.send();
+    };
+
+    // -----------------------------------------------------------------------
+    // Rename the "All" sort button to "Alphabetic" in both catalog and search
+    // views.  The button is the 3rd control (index 2) in the stored_queries
+    // RadioGroup, present in both findApps.AppCatalog and findApps.SearchApps.
+    // -----------------------------------------------------------------------
+    function _renameAllButton(ctx) {
+        var btns = ctx.$.stored_queries && ctx.$.stored_queries.controls;
+        if (btns && btns[2] && btns[2].setCaption) {
+            btns[2].setCaption("Alphabetic");
+        }
+    }
+
+    var _origACRendered = findApps.AppCatalog.prototype.rendered;
+    findApps.AppCatalog.prototype.rendered = function () {
+        _origACRendered.call(this);
+        _renameAllButton(this);
+    };
+
+    var _origSARendered = findApps.SearchApps.prototype.rendered;
+    findApps.SearchApps.prototype.rendered = function () {
+        _origSARendered.call(this);
+        _renameAllButton(this);
+    };
+
+    // -----------------------------------------------------------------------
+    // ReviewList: hide the "Was this review useful?" Yes/No row — those
+    // buttons called a live HP service that no longer exists.
+    // -----------------------------------------------------------------------
+    var _origGetReview = findApps.Details.ReviewList.prototype.getReview;
+    findApps.Details.ReviewList.prototype.getReview = function (inSender, inIndex) {
+        var result = _origGetReview.call(this, inSender, inIndex);
+        if (result) {
+            this.$.reviewReviewsBox.hide();
+            this.$.usefulNessCount.hide();
+        }
+        return result;
     };
 
     // -----------------------------------------------------------------------

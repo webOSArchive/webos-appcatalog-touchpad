@@ -132,6 +132,10 @@
     // so by the time the mock fires, this variable is already set.
     var _lastStarRating = 0;
 
+    // Related app IDs from the most recent getApplicationDetails response.
+    // Used by renderAppDetailsFromModel to conditionally show the Related Apps button.
+    var _lastRelatedApps = [];
+
     // Tracks the total item count returned by the server for the most recent
     // BrowseAppsService request.  appListChanged reads this to extend the sparse
     // array so the VirtualList knows the full scroll height before page 2 loads.
@@ -240,13 +244,19 @@
         }
 
         var url;
-        if (service === "SearchAppsService" || service === "SearchMoreAppsService") {
-            url = API_BASE + "getSearchResults.php?app=" +
-                  encodeURIComponent(params.queryStr || "");
-        } else if (params.packageIds && params.packageIds.length > 0) {
+        if (params.packageIds && params.packageIds.length > 0) {
+            // Specific app IDs — used by Related Apps, Saved Apps, etc.
             url = API_BASE + "getMuseumMaster.php?useAppId=true" +
                   "&appIds=" + encodeURIComponent(params.packageIds.join(",")) +
                   "&key=" + makeKey();
+        } else if (service === "SearchAppsService" && params.developerId && !params.queryStr) {
+            // Developer Apps button — search by vendor ID, not free-text query.
+            url = API_BASE + "getMuseumMaster.php?vendorId=" +
+                  encodeURIComponent(params.developerId) +
+                  "&hide_missing=true&key=" + makeKey();
+        } else if (service === "SearchAppsService" || service === "SearchMoreAppsService") {
+            url = API_BASE + "getSearchResults.php?app=" +
+                  encodeURIComponent(params.queryStr || "");
         } else {
             var pageSize = params.count || AppCatalog.Config.defaultPageSize;
             var page     = Math.floor((params.startPosition || 0) / pageSize);
@@ -331,7 +341,8 @@
                     var iconUri = cached.appIcon || makeIconUrl(raw.appIcon || "");
 
                     // Stash for ratingsBreakdown in the upcoming positive-reviews mock call.
-                    _lastStarRating = raw.starRating || 0;
+                    _lastStarRating    = raw.starRating    || 0;
+                    _lastRelatedApps   = (raw.relatedApps && raw.relatedApps.length) ? raw.relatedApps : [];
 
                     var images = [];
                     if (iconUri) {
@@ -514,6 +525,41 @@
             this.$.usefulNessCount.hide();
         }
         return result;
+    };
+
+    // -----------------------------------------------------------------------
+    // Details: conditionally inject a "Related Apps" button below the
+    // "Developer Apps" button when the current app has related apps in the
+    // museum database.  Re-evaluated on every renderAppDetailsFromModel call
+    // (i.e. each time the detail page loads a new app).
+    // -----------------------------------------------------------------------
+    var _origRenderAppDetails = findApps.Details.prototype.renderAppDetailsFromModel;
+    findApps.Details.prototype.renderAppDetailsFromModel = function (appDetails) {
+        _origRenderAppDetails.call(this, appDetails);
+
+        var devNode = this.$.developerAppsButton && this.$.developerAppsButton.hasNode();
+        if (!devNode) { return; }
+
+        // Remove any stale button from a prior app.
+        var existing = devNode.parentNode.querySelector(".archive-related-btn");
+        if (existing) { existing.parentNode.removeChild(existing); }
+
+        if (!_lastRelatedApps.length) { return; }
+
+        var ids = _lastRelatedApps.map(function (a) { return a.id; });
+        var btn = document.createElement("div");
+        btn.className = "enyo-button enyo-button-light linkButton archive-related-btn";
+        btn.setAttribute("role", "button");
+        btn.textContent = "Related Apps";
+        btn.onclick = function () {
+            findApps.ViewLibrary.getView("DEVSEARCH").setParams({
+                packageIds:      ids,
+                hideSearchField: true,
+                title:           "Related Apps",
+                comingFrom:      "details"
+            });
+        };
+        devNode.parentNode.insertBefore(btn, devNode.nextSibling);
     };
 
     // -----------------------------------------------------------------------

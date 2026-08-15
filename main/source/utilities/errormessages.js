@@ -132,7 +132,7 @@ findApps.Utilities._dialogErrors = {
     },
     invalidtoken: {
         page: true,
-        message: $L("We could not find a valid HP webOS Account.<br/>You need a valid account to use HP App Catalog.")
+        message: $L("We could not find a valid webOS Account.<br/>You need a valid account to use App Catalog.")
     },
     failure: {
         page: true

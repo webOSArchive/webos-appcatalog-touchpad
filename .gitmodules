@@ -1,0 +1,3 @@
+[submodule "main/source/magazine/PivotMagazine-WOSA"]
+	path = main/source/magazine/PivotMagazine-WOSA
+	url = https://github.com/webOSArchive/PivotMagazine-WOSA.git

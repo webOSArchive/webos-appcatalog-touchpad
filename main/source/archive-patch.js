@@ -915,4 +915,97 @@
     };
     cfgXhr.send();
 
+    // -----------------------------------------------------------------------
+    // Self-update: check the static compatibility manifest served at the
+    // domain root. Per webos-catalog-service's own docs, this is the same
+    // mechanism the patched HP clients have always self-updated from — kept on
+    // plain HTTP on purpose, since it has to work on a freshly-Doctored device
+    // before Preware or the community OTA (and its modern TLS) are installed.
+    // Best-effort only: any failure here just means no update prompt, never a
+    // blocked launch.
+    // -----------------------------------------------------------------------
+    function isNewerVersion(remoteVersion, localVersion) {
+        var r = String(remoteVersion).split(".").map(Number);
+        var l = String(localVersion).split(".").map(Number);
+        for (var i = 0; i < Math.max(r.length, l.length); i++) {
+            var rv = r[i] || 0, lv = l[i] || 0;
+            if (rv !== lv) { return rv > lv; }
+        }
+        return false;
+    }
+
+    function installViaPreware(fileUrl) {
+        if (!fileUrl) { return; }
+        try {
+            var bridge = new PalmServiceBridge();
+            bridge.call("palm://com.palm.applicationManager/open",
+                JSON.stringify({ id: "org.webosinternals.preware", params: { type: "install", file: fileUrl } }));
+        } catch (e) {
+            console.log("ARCHIVE-PATCH: could not launch Preware install: " + e);
+        }
+    }
+
+    function showUpdatePrompt(manifest) {
+        var overlay = document.createElement("div");
+        overlay.setAttribute("style",
+            "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);" +
+            "z-index:99999;display:flex;align-items:center;justify-content:center;");
+
+        var box = document.createElement("div");
+        box.setAttribute("style",
+            "background:#2e2e2e;color:#fff;width:80%;max-width:420px;padding:20px;" +
+            "border-radius:8px;font-size:15px;line-height:1.4em;box-sizing:border-box;");
+
+        var title = document.createElement("div");
+        title.setAttribute("style", "font-weight:bold;font-size:18px;margin-bottom:10px;");
+        title.textContent = "Update Available";
+
+        var msg = document.createElement("div");
+        msg.innerHTML = "App Catalog " + manifest.version + " is available." +
+            (manifest.versionNote ? "<br><br>" + manifest.versionNote : "");
+
+        var buttons = document.createElement("div");
+        buttons.setAttribute("style", "display:flex;justify-content:center;gap:16px;margin-top:20px;");
+
+        var laterBtn = document.createElement("button");
+        laterBtn.textContent = "Later";
+        laterBtn.setAttribute("style", "padding:8px 20px;");
+        laterBtn.onclick = function () { document.body.removeChild(overlay); };
+
+        var updateBtn = document.createElement("button");
+        updateBtn.textContent = "Update Now";
+        updateBtn.setAttribute("style", "padding:8px 20px;font-weight:bold;");
+        updateBtn.onclick = function () {
+            document.body.removeChild(overlay);
+            installViaPreware(manifest.filename);
+        };
+
+        buttons.appendChild(updateBtn);
+        buttons.appendChild(laterBtn);
+        box.appendChild(title);
+        box.appendChild(msg);
+        box.appendChild(buttons);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+    }
+
+    function checkForCatalogUpdate() {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", "http://appcatalog.webosarchive.org/appcatalog-touchpad.json", true);
+        xhr.onload = function () {
+            if (xhr.status !== 200) { return; }
+            var manifest;
+            try { manifest = JSON.parse(xhr.responseText); } catch (e) { return; }
+            if (manifest && manifest.version && isNewerVersion(manifest.version, enyo.fetchAppInfo().version)) {
+                showUpdatePrompt(manifest);
+            }
+        };
+        xhr.onerror = function () {};
+        xhr.send();
+    }
+
+    // Give the launcher window a moment to finish rendering before popping an
+    // overlay on top of it.
+    setTimeout(checkForCatalogUpdate, 3000);
+
 }());

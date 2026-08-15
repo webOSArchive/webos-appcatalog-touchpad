@@ -11416,7 +11416,7 @@ message: $L("You must connect to a network to use this application.")
 },
 invalidtoken: {
 page: !0,
-message: $L("We could not find a valid HP webOS Account.<br/>You need a valid account to use HP App Catalog.")
+message: $L("We could not find a valid webOS Account.<br/>You need a valid account to use App Catalog.")
 },
 failure: {
 page: !0
@@ -12752,7 +12752,7 @@ pack: "center",
 components: [ {
 name: "header",
 className: "terms-header",
-content: $L("HP webOS App Catalog End-User Terms And Conditions")
+content: $L("webOS App Catalog End-User Terms And Conditions")
 } ]
 }, {
 kind: "Scroller",
@@ -13096,7 +13096,7 @@ kind: enyo.VFlexBox,
 published: {},
 components: [ {
 name: "end-user",
-content: $L("HP webOS App Catalog End-User Terms And Conditions"),
+content: $L("webOS App Catalog End-User Terms And Conditions"),
 className: "terms-text-subhead"
 }, {
 content: $L("THE FOLLOWING TERMS AND CONDITIONS (\u201cAGREEMENT\u201d) APPLY TO YOUR USE OF THE HP WEBOS APP CATALOG (\u201cAPP CATALOG\u201d), YOUR PURCHASE OF PRODUCTS (EACH, AN \u201cAPPLICATION\u201d) THROUGH THE APP CATALOG, AND YOUR USE OF SUCH APPLICATIONS. BEFORE USING, DOWNLOADING FROM OR OTHERWISE ACCESSING THE HP APP CATALOG OR ANY APPLICATION, CAREFULLY READ THIS AGREEMENT. THE APPLICATIONS PROVIDED THROUGH THE APP CATALOG ARE LICENSED BY THE PROVIDER OF THE APPLICATION (\u201cAPPLICATION PROVIDER\u201d) TO YOU, THE ORIGINAL END USER, SOLELY FOR YOUR PERSONAL USE AS SET FORTH BELOW AND SUBJECT TO THE APPLICABLE END-USER LICENSE AGREEMENT. IF YOU DO NOT AGREE TO THE TERMS AND CONDITIONS OF THIS AGREEMENT, DO NOT USE, DOWNLOAD OR OTHERWISE ACCESS THE APP CATALOG. USING, DOWNLOADING, OR OTHERWISE ACCESSING ANY PART OF THE APP CATALOG INDICATES THAT YOU ACCEPT THESE TERMS AND CONDITIONS.  YOU MUST BE AT LEAST 13 (THIRTEEN) YEARS OF AGE TO USE OR ACCESS THE APP CATALOG.  IF YOU ARE AT LEAST 13 BUT UNDER THE AGE OF 18, YOU MUST HAVE YOUR PARENT OR LEGAL GUARDIAN\u2019S PERMISSION TO USE OR ACCESS THE APP CATALOG.")

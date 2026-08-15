@@ -9,7 +9,7 @@ enyo.kind({
         components: [{
             name: "header",
             className: 'terms-header',
-            content: $L("HP webOS App Catalog End-User Terms And Conditions")
+            content: $L("webOS App Catalog End-User Terms And Conditions")
         }, ]
     }, {
         kind: "Scroller",

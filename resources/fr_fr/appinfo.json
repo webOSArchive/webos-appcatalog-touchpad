@@ -7,11 +7,11 @@
   "removable": false,
   "splashBackground": "../../images/splash-screenshot-default.png",
   "splashicon": "../../icon-256x256.png",
-  "title": "App Catalog de HP",
+  "title": "App Catalog",
   "type": "web",
   "uiRevision": 2,
   "universalSearch": {"search": {
-    "displayName": "App Catalog de HP",
+    "displayName": "App Catalog",
     "launchParam": {"common": {
       "params": {
         "search": "#{searchTerms}",
@@ -22,5 +22,5 @@
     "url": "com.palm.app.findapps"
   }},
   "vendor": "Palm",
-  "version": "5.0.2900"
+  "version": "6.1.2901"
 }

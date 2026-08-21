@@ -180,10 +180,21 @@
     // stopped being visible", covering every way that can happen (initial
     // load, checkAndHydrate's mid-session switch, the layout-error fallback).
     // -----------------------------------------------------------------------
+    // Confirmed on-device 2026-08-21: leaving `method` unset (matching papyrus's
+    // DimService component literally) resolves to the component's `name`
+    // ("DimService") per PalmService.importProps -- and the bus rejected that
+    // outright: {"returnValue":false,"errorCode":-1,"errorText":"Unknown method
+    // \"DimService\" for category \"/control\""}. papyrus's own DimService
+    // component has the exact same name/no-method shape, so it's sending this
+    // identical invalid call -- whatever keeps papyrus's screen awake while
+    // reading isn't this. `setProperty` is LunaSysMgr's actual registered
+    // method for this category (DisplayManager::controlSetProperty, confirmed
+    // via `strings`/`nm` on LunaSysMgr-binaries/bin/LunaSysMgr).
     enyo.kind({
         name: "enyo.FindApps.Magazine.PivotDimService",
         kind: "PalmService",
-        service: "palm://com.palm.display/control/"
+        service: "palm://com.palm.display/control/",
+        method: "setProperty"
     });
 
     var pivotDimService = new enyo.FindApps.Magazine.PivotDimService({name: "DimService"});

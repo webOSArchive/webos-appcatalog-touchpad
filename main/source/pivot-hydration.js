@@ -160,21 +160,19 @@
     }
 
     // -----------------------------------------------------------------------
-    // Wake lock -- confirmed on-device 2026-08-21 that the com.palm.display
-    // Luna-bus route (whether called as "DimService" -- rejected outright,
-    // "Unknown method \"DimService\" for category \"/control\"" -- or as the
-    // real registered method "setProperty", which the bus ACKs with
-    // {"returnValue":true} but has no observable effect: screen still dims)
-    // does not actually block the screen timeout on this device, success
-    // response notwithstanding. Switched to the documented public API
-    // instead: window.PalmSystem.setWindowProperties({blockScreenTimeout}),
-    // wrapped by the framework as enyo.windows.setWindowProperties(window,
-    // {...}) -- this is a direct native window call, not a Luna Bus message,
-    // and it's what every first-party HP app in the SDK sample tree
-    // (com.palm.app.photos, com.palm.app.messaging) uses directly for this
-    // exact property. Safe to call unconditionally: on real webOS it
-    // dispatches straight to the native binding; there's no non-webOS
-    // codepath for this app (see index.html), so no branch needed.
+    // Wake lock -- confirmed on-device 2026-08-21 to hold the screen awake
+    // (blockScreenTimeout) using enyo.windows.setWindowProperties(window,
+    // {...}), a direct native window call and the documented public API for
+    // this property -- the same call every first-party HP app in the SDK
+    // sample tree (com.palm.app.photos, com.palm.app.messaging) uses
+    // directly. A Luna Bus route via a "DimService" PalmService component
+    // against palm://com.palm.display/control/ (matching papyrus's own
+    // DimService) was tried first and ruled out: unset `method` resolves to
+    // the component's name ("DimService"), which the bus rejects outright as
+    // an unknown method; the real registered method ("setProperty") ACKs
+    // with {"returnValue":true} but has no observable effect on this device.
+    // Called unconditionally, no window.PalmSystem branch -- this app has no
+    // non-webOS codepath (see index.html).
     //
     // Triggered the same way papyrus triggers it: tied to a VIEW being on
     // screen (papyrus: disableDim() while the reading view is up, enableDim()

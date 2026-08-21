@@ -393,15 +393,33 @@
         }
         this.usingDefaultEdition = true;
         this._pivotLang = resolveLang();
-        this._pivotTryHydratedCache(true);
+        this._pivotCheckForUpdate(true);
     };
 
-    // Shared by every check site (initial load, background poll, and the
-    // tab-return check) so there's exactly one success/failure path to reason
-    // about. isInitial controls what happens on failure: the very first check
-    // falls back to the bundled placeholder (nothing has rendered yet); every
-    // later check just leaves whatever's already on screen alone and waits for
-    // the next attempt.
+    // Single entry point for "what should the Magazine show right now" --
+    // called on initial load and on tab-return (see
+    // findApps.MagazineView.prototype.reset below). Checked BEFORE ever
+    // looking at the cache: isHydratingElsewhere() is true exactly while a
+    // newer edition is actively downloading (markHydrating()'s heartbeat --
+    // see its own comment), so a user opening or returning to the Magazine
+    // tab mid-download sees "fetching your next issue" instead of silently
+    // sitting on the old edition until it swaps out from under them without
+    // warning. No separate timer needed for this -- checked exactly at the
+    // points where the user might actually be looking.
+    MagazineProto._pivotCheckForUpdate = function (isInitial) {
+        if (isHydratingElsewhere()) {
+            this._loadBundledPlaceholderEdition();
+            return;
+        }
+        this._pivotTryHydratedCache(isInitial);
+    };
+
+    // Shared by every check site (initial load, background poll while the
+    // placeholder is showing, and the tab-return check) so there's exactly
+    // one success/failure path to reason about. isInitial controls what
+    // happens on failure: the very first check falls back to the bundled
+    // placeholder (nothing has rendered yet); every later check just leaves
+    // whatever's already on screen alone and waits for the next attempt.
     //
     // The cache-busting query param is load-bearing, not defensive: this is
     // the SAME literal URL re-requested every 15s by _startPivotRecheck (and
@@ -416,8 +434,7 @@
     // would explain a magazine that never swaps over without a full app
     // restart (a fresh process has no cache yet). Same class of bug
     // archive-patch.js already works around via makeKey() for the museum
-    // API. Not yet confirmed on-device which of the two is the actual cause
-    // here; this fixes the mechanism either way and is cheap regardless.
+    // API.
     MagazineProto._pivotTryHydratedCache = function (isInitial) {
         this.$.webService.call(null, {
             url: PIVOT_CACHE_ROOT + "/" + this._pivotLang + "/manifest.json?_=" + Date.now(),
@@ -478,18 +495,16 @@
             onFailure: "unableToInitMagazine"
         });
         // The placeholder just rendered because hydration hadn't finished (or hadn't
-        // even started) at the moment this Magazine instance was created. Hydration
-        // itself runs independently in the background and has no way to reach back
-        // into an already-rendered view to say "done now" -- without this, a user who
-        // opens the Magazine tab before hydration finishes and just leaves it open
-        // (never switching away and back, which is the other trigger -- see
-        // findApps.MagazineView.prototype.reset below) would sit on the placeholder
-        // forever, even after the real edition is fully cached on disk. So: poll for
-        // it in the background too. Confirmed on-device that hydration can genuinely
-        // take 6-7 minutes end to end (not just the ~3-4min happy-path estimate --
-        // per-call round-trip latency adds up over ~200 calls), so this is capped
-        // generously above that rather than the 5min this first shipped with, which
-        // was observed expiring before a real run actually finished.
+        // even started) at the moment this Magazine instance was created -- either
+        // it's genuinely the first hydration ever, or _pivotCheckForUpdate routed
+        // here because isHydratingElsewhere() found an update actively in progress.
+        // Either way, hydration runs independently in the background and has no way
+        // to reach back into an already-rendered view to say "done now" -- without
+        // this, a user who leaves the tab open (never switching away and back, the
+        // other trigger -- see findApps.MagazineView.prototype.reset below) would
+        // sit on the placeholder forever, even after the edition finishes caching.
+        // So: poll for it in the background too, capped well above the ~6-7 minutes
+        // a full hydration has taken end to end on-device.
         this._startPivotRecheck();
     };
 
@@ -551,12 +566,18 @@
         // broken experience. This makes tab-return the primary, instant way hydration
         // gets noticed -- the interval in _startPivotRecheck above is just the backup
         // for someone who leaves the Magazine tab open and never switches away at all.
+        //
+        // Routed through _pivotCheckForUpdate (not just _pivotTryHydratedCache)
+        // even when NOT currently on the placeholder: tab-return is also a natural
+        // point to notice a newer edition started downloading while the user was
+        // away on a different tab, and switch to the placeholder for it instead of
+        // silently continuing to show the old one.
         var _origMagazineViewReset = findApps.MagazineView.prototype.reset;
         findApps.MagazineView.prototype.reset = function () {
             var result = _origMagazineViewReset.apply(this, arguments);
             var magazine = this.$.magazine;
-            if (magazine && magazine._pivotShowingPlaceholder) {
-                magazine._pivotTryHydratedCache(false);
+            if (magazine) {
+                magazine._pivotCheckForUpdate(false);
             }
             return result;
         };

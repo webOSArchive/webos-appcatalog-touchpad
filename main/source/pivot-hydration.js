@@ -160,89 +160,46 @@
     }
 
     // -----------------------------------------------------------------------
-    // Wake lock -- mirrors webos-papyrus-ereader's disableDim/enableDim
-    // (app/app/Main.js) exactly: a PalmService named "DimService" against
-    // palm://com.palm.display/control/, called directly (no method:, no
-    // params.subscribe) when on-device, falling back to
-    // enyo.windows.setWindowProperties in a non-webOS context. Both this app
-    // (com.palm.app.enyo-findapps) and papyrus (com.palm.codepoet.papyrus)
-    // are com.palm.*-namespaced apps, which get elevated Luna Bus access to
-    // this service beyond what the public SDK docs describe for third-party
-    // apps -- so pattern-match papyrus's proven implementation here rather
-    // than re-deriving one.
+    // Wake lock -- confirmed on-device 2026-08-21 that the com.palm.display
+    // Luna-bus route (whether called as "DimService" -- rejected outright,
+    // "Unknown method \"DimService\" for category \"/control\"" -- or as the
+    // real registered method "setProperty", which the bus ACKs with
+    // {"returnValue":true} but has no observable effect: screen still dims)
+    // does not actually block the screen timeout on this device, success
+    // response notwithstanding. Switched to the documented public API
+    // instead: window.PalmSystem.setWindowProperties({blockScreenTimeout}),
+    // wrapped by the framework as enyo.windows.setWindowProperties(window,
+    // {...}) -- this is a direct native window call, not a Luna Bus message,
+    // and it's what every first-party HP app in the SDK sample tree
+    // (com.palm.app.photos, com.palm.app.messaging) uses directly for this
+    // exact property. Safe to call unconditionally: on real webOS it
+    // dispatches straight to the native binding; there's no non-webOS
+    // codepath for this app (see index.html), so no branch needed.
     //
-    // Triggered the same way papyrus triggers it, too: tied to a VIEW being
-    // on screen (papyrus: disableDim() while the reading view is up,
-    // enableDim() once the user leaves it), not to the background download
-    // process's own start/end. See _loadBundledPlaceholderEdition (acquire)
-    // and _pivotHydratedCacheFound (release) below -- those are the single
-    // choke points for "the Fetching placeholder just became visible /just
-    // stopped being visible", covering every way that can happen (initial
-    // load, checkAndHydrate's mid-session switch, the layout-error fallback).
+    // Triggered the same way papyrus triggers it: tied to a VIEW being on
+    // screen (papyrus: disableDim() while the reading view is up, enableDim()
+    // once the user leaves it), not to the background download process's own
+    // start/end. See _loadBundledPlaceholderEdition (acquire) and
+    // _pivotHydratedCacheFound (release) below -- those are the single choke
+    // points for "the Fetching placeholder just became visible/stopped being
+    // visible", covering every way that can happen (initial load,
+    // checkAndHydrate's mid-session switch, the layout-error fallback).
     // -----------------------------------------------------------------------
-    // Confirmed on-device 2026-08-21: leaving `method` unset (matching papyrus's
-    // DimService component literally) resolves to the component's `name`
-    // ("DimService") per PalmService.importProps -- and the bus rejected that
-    // outright: {"returnValue":false,"errorCode":-1,"errorText":"Unknown method
-    // \"DimService\" for category \"/control\""}. papyrus's own DimService
-    // component has the exact same name/no-method shape, so it's sending this
-    // identical invalid call -- whatever keeps papyrus's screen awake while
-    // reading isn't this. `setProperty` is LunaSysMgr's actual registered
-    // method for this category (DisplayManager::controlSetProperty, confirmed
-    // via `strings`/`nm` on LunaSysMgr-binaries/bin/LunaSysMgr).
-    enyo.kind({
-        name: "enyo.FindApps.Magazine.PivotDimService",
-        kind: "PalmService",
-        service: "palm://com.palm.display/control/",
-        method: "setProperty"
-    });
-
-    var pivotDimService = new enyo.FindApps.Magazine.PivotDimService({name: "DimService"});
-
-    // Diagnostic only -- logs the actual resolved service+method this
-    // instance will call (PalmService derives method from the component's
-    // name when none is set explicitly), and surfaces whatever the bus
-    // itself says back, since silent success/failure looked identical in
-    // the log otherwise. Overriding responseSuccess/responseFailure directly
-    // (rather than onSuccess/onFailure props, which dispatch through
-    // this.owner -- null here, since pivotDimService has no owner) is what
-    // actually fires regardless of ownership.
-    console.log("PIVOT-HYDRATION DimService resolved to service=" + pivotDimService.service +
-             " method=" + JSON.stringify(pivotDimService.method));
-    pivotDimService.responseSuccess = function (inRequest) {
-        console.log("PIVOT-HYDRATION DimService call SUCCEEDED: " + JSON.stringify(inRequest && inRequest.response));
-    };
-    pivotDimService.responseFailure = function (inRequest) {
-        console.log("PIVOT-HYDRATION DimService call FAILED: " + JSON.stringify(inRequest && inRequest.response));
-    };
-
     function acquireWakeLock() {
-        console.log("PIVOT-HYDRATION acquireWakeLock: window.PalmSystem=" + !!window.PalmSystem);
-        if (window.PalmSystem && pivotDimService) {
-            try {
-                pivotDimService.call({blockScreenTimeout: true});
-                console.log("PIVOT-HYDRATION acquireWakeLock: DimService.call({blockScreenTimeout:true}) sent");
-            } catch (e) {
-                console.log("PIVOT-HYDRATION error disabling dim: " + e);
-            }
-        } else {
+        try {
             enyo.windows.setWindowProperties(window, {blockScreenTimeout: true});
-            console.log("PIVOT-HYDRATION acquireWakeLock: used enyo.windows.setWindowProperties fallback");
+            console.log("PIVOT-HYDRATION acquireWakeLock: setWindowProperties({blockScreenTimeout:true}) sent");
+        } catch (e) {
+            console.log("PIVOT-HYDRATION error disabling dim: " + e);
         }
     }
 
     function releaseWakeLock() {
-        console.log("PIVOT-HYDRATION releaseWakeLock: window.PalmSystem=" + !!window.PalmSystem);
-        if (window.PalmSystem && pivotDimService) {
-            try {
-                pivotDimService.call({blockScreenTimeout: false});
-                console.log("PIVOT-HYDRATION releaseWakeLock: DimService.call({blockScreenTimeout:false}) sent");
-            } catch (e) {
-                console.log("PIVOT-HYDRATION error enabling dim: " + e);
-            }
-        } else {
+        try {
             enyo.windows.setWindowProperties(window, {blockScreenTimeout: false});
-            console.log("PIVOT-HYDRATION releaseWakeLock: used enyo.windows.setWindowProperties fallback");
+            console.log("PIVOT-HYDRATION releaseWakeLock: setWindowProperties({blockScreenTimeout:false}) sent");
+        } catch (e) {
+            console.log("PIVOT-HYDRATION error enabling dim: " + e);
         }
     }
 

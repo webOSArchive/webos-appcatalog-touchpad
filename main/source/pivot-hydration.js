@@ -170,6 +170,15 @@
     // this service beyond what the public SDK docs describe for third-party
     // apps -- so pattern-match papyrus's proven implementation here rather
     // than re-deriving one.
+    //
+    // Triggered the same way papyrus triggers it, too: tied to a VIEW being
+    // on screen (papyrus: disableDim() while the reading view is up,
+    // enableDim() once the user leaves it), not to the background download
+    // process's own start/end. See _loadBundledPlaceholderEdition (acquire)
+    // and _pivotHydratedCacheFound (release) below -- those are the single
+    // choke points for "the Fetching placeholder just became visible /just
+    // stopped being visible", covering every way that can happen (initial
+    // load, checkAndHydrate's mid-session switch, the layout-error fallback).
     // -----------------------------------------------------------------------
     enyo.kind({
         name: "enyo.FindApps.Magazine.PivotDimService",
@@ -247,7 +256,6 @@
                         console.log("PIVOT-HYDRATION manifest.device.json fetch FAILED or malformed");
                         return;
                     }
-                    acquireWakeLock();
                     var totalBytes = 0;
                     var i;
                     for (i = 0; i < devManifest.assets.length; i++) {
@@ -263,7 +271,6 @@
                         totalBytes, 0, devManifest.assets.length, 0, function () {
                         console.log("PIVOT-HYDRATION hydration complete for lang=" + lang);
                         updateProgress(100);
-                        releaseWakeLock();
                     });
                 });
             });
@@ -466,6 +473,7 @@
 
     MagazineProto._pivotHydratedCacheFound = function (inSender, inResponse, inRequest) {
         this._pivotShowingPlaceholder = false;
+        releaseWakeLock();
         if (this._pivotRecheckTimer) {
             clearInterval(this._pivotRecheckTimer);
             this._pivotRecheckTimer = null;
@@ -507,6 +515,7 @@
     MagazineProto._loadBundledPlaceholderEdition = function () {
         this.warn(MagazineErrors.getErrorString(MagazineErrors.LOADING_DEFAULT_EDITION));
         this._pivotShowingPlaceholder = true;
+        acquireWakeLock();
         var lang = this._pivotLang;
         this.$.webService.call(null, {
             url: "source/magazine/defaultEdition/" + lang + "/manifest.json",

@@ -13,6 +13,15 @@
     var PIVOT_CACHE_ROOT = "/media/internal/.pivot";
     var SUPPORTED_LANGS = ["de", "en", "es", "fr", "it"];
 
+    // Set by MagazineProto.loadDefaultEdition, read by checkAndHydrate --
+    // lets the write path push a switch-to-placeholder directly onto a
+    // currently-rendered Magazine the moment it decides a download is
+    // starting, rather than the read side guessing. A per-launch singleton
+    // is safe here: confirmed on-device that switching Magazine tabs away and
+    // back reuses the same instance rather than recreating it, so at most one
+    // Magazine instance ever exists per app session.
+    var _pivotActiveMagazine = null;
+
     function resolveLang() {
         var lang = (enyo.g11n.currentLocale().toISOString()).substring(0, 2);
         if (SUPPORTED_LANGS.indexOf(lang) === -1) {
@@ -224,6 +233,19 @@
                     return;
                 }
                 markHydrating();
+                // Push the switch directly onto whatever's already rendered, right
+                // as the decision to download is made -- this is the actual fix,
+                // not the isHydratingElsewhere() check in loadDefaultEdition (that
+                // one runs too early to ever see this same download start; see its
+                // comment). Guarded on _pivotShowingPlaceholder so this doesn't
+                // fire redundantly if the Magazine tab happens to already be
+                // showing the placeholder for some other reason (e.g. the very
+                // first hydration ever, before any edition exists to switch away
+                // from).
+                if (_pivotActiveMagazine && !_pivotActiveMagazine._pivotShowingPlaceholder) {
+                    console.log("PIVOT-HYDRATION pushing placeholder switch to active Magazine instance");
+                    _pivotActiveMagazine._loadBundledPlaceholderEdition();
+                }
                 fetchJson(PIVOT_BASE_URL + "/" + lang + "/manifest.device.json", function (devManifest) {
                     if (!devManifest || !devManifest.assets || !devManifest.self) {
                         console.log("PIVOT-HYDRATION manifest.device.json fetch FAILED or malformed");
@@ -393,25 +415,27 @@
         }
         this.usingDefaultEdition = true;
         this._pivotLang = resolveLang();
-        this._pivotCheckForUpdate(true);
-    };
-
-    // Single entry point for "what should the Magazine show right now" --
-    // called on initial load and on tab-return (see
-    // findApps.MagazineView.prototype.reset below). Checked BEFORE ever
-    // looking at the cache: isHydratingElsewhere() is true exactly while a
-    // newer edition is actively downloading (markHydrating()'s heartbeat --
-    // see its own comment), so a user opening or returning to the Magazine
-    // tab mid-download sees "fetching your next issue" instead of silently
-    // sitting on the old edition until it swaps out from under them without
-    // warning. No separate timer needed for this -- checked exactly at the
-    // points where the user might actually be looking.
-    MagazineProto._pivotCheckForUpdate = function (isInitial) {
+        _pivotActiveMagazine = this;
+        // Checked BEFORE ever looking at the cache, launch-time only --
+        // deliberately not re-checked on tab-return (see
+        // findApps.MagazineView.prototype.reset below), not something that
+        // runs during active use. isHydratingElsewhere() is true exactly
+        // while a newer edition is actively downloading (markHydrating()'s
+        // heartbeat -- see its own comment), so a user who opens the app
+        // while a download happens to already be in progress sees "fetching
+        // your next issue" instead of the old edition. In practice this
+        // rarely fires on its own: the Magazine tab is this app's default
+        // view, so loadDefaultEdition typically runs within ~2s of launch --
+        // long before checkAndHydrate's 20s delay even elapses, let alone
+        // starts a download. checkAndHydrate pushing directly onto
+        // _pivotActiveMagazine (below) is what actually handles the common
+        // case; this check is the fallback for whenever the tab is opened
+        // later, after a download has already been running for a while.
         if (isHydratingElsewhere()) {
             this._loadBundledPlaceholderEdition();
             return;
         }
-        this._pivotTryHydratedCache(isInitial);
+        this._pivotTryHydratedCache(true);
     };
 
     // Shared by every check site (initial load, background poll while the
@@ -496,8 +520,8 @@
         });
         // The placeholder just rendered because hydration hadn't finished (or hadn't
         // even started) at the moment this Magazine instance was created -- either
-        // it's genuinely the first hydration ever, or _pivotCheckForUpdate routed
-        // here because isHydratingElsewhere() found an update actively in progress.
+        // it's genuinely the first hydration ever, or loadDefaultEdition's
+        // isHydratingElsewhere() check found an update actively in progress.
         // Either way, hydration runs independently in the background and has no way
         // to reach back into an already-rendered view to say "done now" -- without
         // this, a user who leaves the tab open (never switching away and back, the
@@ -567,17 +591,15 @@
         // gets noticed -- the interval in _startPivotRecheck above is just the backup
         // for someone who leaves the Magazine tab open and never switches away at all.
         //
-        // Routed through _pivotCheckForUpdate (not just _pivotTryHydratedCache)
-        // even when NOT currently on the placeholder: tab-return is also a natural
-        // point to notice a newer edition started downloading while the user was
-        // away on a different tab, and switch to the placeholder for it instead of
-        // silently continuing to show the old one.
+        // Deliberately only fires while the placeholder is already showing --
+        // checking for a newer edition is launch-time only, not something that
+        // runs while the app is in active use.
         var _origMagazineViewReset = findApps.MagazineView.prototype.reset;
         findApps.MagazineView.prototype.reset = function () {
             var result = _origMagazineViewReset.apply(this, arguments);
             var magazine = this.$.magazine;
-            if (magazine) {
-                magazine._pivotCheckForUpdate(false);
+            if (magazine && magazine._pivotShowingPlaceholder) {
+                magazine._pivotTryHydratedCache(false);
             }
             return result;
         };

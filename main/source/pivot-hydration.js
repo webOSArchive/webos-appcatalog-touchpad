@@ -38,7 +38,7 @@
     //   progress: {"ticket":N,"amountReceived":X,"amountTotal":Y,...}            (no "completed" key)
     //   final:    {"ticket":N,...,"httpStatus":200,"completed":true,"aborted":false,"target":"..."}
     // -----------------------------------------------------------------------
-    function downloadFile(sourceUrl, targetDir, targetFilename, onDone) {
+    function downloadFile(sourceUrl, targetDir, targetFilename, onProgress, onDone) {
         var done = false;
         var bridge = new PalmServiceBridge();
         function finish(ok) {
@@ -57,11 +57,19 @@
                 try { response = JSON.parse(msg); } catch (e) { return; }
                 if (!response) { return; }
                 if (response.completed) {
+                    if (response.aborted || (response.httpStatus && response.httpStatus !== 200)) {
+                        console.log("PIVOT-HYDRATION downloadmanager reported failure for " + targetFilename +
+                                 ": " + msg);
+                    }
                     finish(!response.aborted && (!response.httpStatus || response.httpStatus === 200));
                 } else if (response.returnValue === false) {
+                    console.log("PIVOT-HYDRATION downloadmanager rejected request for " + targetFilename +
+                             ": " + msg);
                     finish(false);
+                } else if (onProgress && typeof response.amountReceived === "number") {
+                    // Progress update, e.g. {"ticket":N,"amountReceived":X,"amountTotal":Y}.
+                    onProgress(response.amountReceived);
                 }
-                // else: an ack or progress update -- keep waiting.
             };
             bridge.call("palm://com.palm.downloadmanager/download", JSON.stringify({
                 target: sourceUrl,
@@ -70,8 +78,76 @@
                 subscribe: true
             }));
         } catch (e) {
+            console.log("PIVOT-HYDRATION downloadFile threw for " + targetFilename + ": " + e);
             finish(false);
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Progress bar -- updates the placeholder page's enyo.ProgressBar directly
+    // via the DOM rather than through Enyo's component tree. pivot-hydration.js
+    // runs independently of whatever page happens to be rendered (see the
+    // write-path note at the bottom of this file), and the placeholder's
+    // portrait/landscape templates each instantiate their own ProgressBar
+    // (BindableLayout creates one full component tree per orientation, only
+    // one of which is visible at a time via Pane's CSS-based show/hide) -- so
+    // both are queried and updated in lockstep rather than trying to track
+    // which one Magazine currently considers "active".
+    // -----------------------------------------------------------------------
+    var _loggedProgressDomState = false;
+    function updateProgress(percent) {
+        try {
+            var bars = document.querySelectorAll(".pivot-progress-bar .enyo-progress-bar-inner");
+            var i;
+            for (i = 0; i < bars.length; i++) {
+                // Mirrors enyo.Progress.renderPosition(): the fill div is
+                // created with visibility:hidden (position defaults to 0),
+                // and normally only Enyo's own setPosition()/applyPosition()
+                // clear it. Since this updates the DOM directly instead of
+                // going through the component API, both properties have to
+                // be set here or the fill stays invisible at 100% width.
+                bars[i].style.visibility = percent <= 0 ? "hidden" : "visible";
+                bars[i].style.width = percent + "%";
+            }
+            var labels = document.querySelectorAll(".pivot-progress-label");
+            for (i = 0; i < labels.length; i++) {
+                labels[i].textContent = percent + "%";
+            }
+            // Logged once per launch, not per call, so it's visible without
+            // flooding the console across ~90 progress updates. bars.length
+            // being 0 doesn't mean anything is broken by itself -- it also
+            // happens whenever the Magazine tab isn't the foreground view --
+            // but it's the first thing to check if the bar looks frozen while
+            // the placeholder IS on screen.
+            if (!_loggedProgressDomState) {
+                _loggedProgressDomState = true;
+                console.log("PIVOT-HYDRATION updateProgress: found " + bars.length +
+                         " .pivot-progress-bar element(s), " + labels.length + " label(s) in DOM");
+            }
+        } catch (e) {}
+    }
+
+    // Blends byte-weighted and file-count-weighted progress, taking whichever
+    // is higher. Pure byte-weighting (why this exists at all -- see below)
+    // badly under-represents the first ~40% of the queue: an edition's first
+    // ~40 files are near-empty common/apps/*/info.json entries that together
+    // are under 1% of total bytes, but each still costs a full second of the
+    // deliberate inter-file pacing (see downloadQueue) -- confirmed on-device
+    // this reads as "nothing is happening" for the better part of a minute
+    // even though the queue is advancing normally. File-count dominates the
+    // max() during that phase so the bar visibly moves from the first
+    // completed file; byte-weight takes back over once the queue reaches the
+    // handful of large page background images, which is exactly the phase
+    // pure file-counting would otherwise flatline at ~90% and stall through
+    // (the reason this wasn't just file-count-weighted to begin with).
+    function calcPercent(totalBytes, doneBytes, totalFiles, doneFiles) {
+        var byBytes = totalBytes ? (100 * doneBytes / totalBytes) : 0;
+        var byFiles = totalFiles ? (100 * doneFiles / totalFiles) : 0;
+        var pct = Math.floor(Math.max(byBytes, byFiles));
+        // Reserve 100% for the actual completion callback -- manifest.json
+        // (the completion marker itself, downloaded last) has no known size
+        // to weigh in, so byte-math alone can't account for it.
+        return Math.max(0, Math.min(99, pct));
     }
 
     // -----------------------------------------------------------------------
@@ -129,22 +205,48 @@
     // standalone, independent of whether the Magazine tab is ever opened.
     // -----------------------------------------------------------------------
     function checkAndHydrate(lang) {
+        console.log("PIVOT-HYDRATION checkAndHydrate lang=" + lang);
         if (isHydratingElsewhere()) {
+            console.log("PIVOT-HYDRATION skipped: another launch is already hydrating (localStorage lock)");
             return;
         }
         readLocalVersion(lang, function (localVersion) {
+            console.log("PIVOT-HYDRATION local manifestVersion=" + localVersion);
             fetchJson(PIVOT_BASE_URL + "/" + lang + "/version.json", function (remote) {
-                var remoteVersion = (remote && remote.magazineVersion) || 0;
+                if (!remote) {
+                    console.log("PIVOT-HYDRATION version.json fetch FAILED (network/parse error) -- treating as no update available this launch");
+                    return;
+                }
+                var remoteVersion = remote.magazineVersion || 0;
+                console.log("PIVOT-HYDRATION remote magazineVersion=" + remoteVersion);
                 if (remoteVersion <= localVersion) {
-                    return; // already current -- nothing to do
+                    console.log("PIVOT-HYDRATION already current -- nothing to do");
+                    return;
                 }
                 markHydrating();
                 fetchJson(PIVOT_BASE_URL + "/" + lang + "/manifest.device.json", function (devManifest) {
                     if (!devManifest || !devManifest.assets || !devManifest.self) {
+                        console.log("PIVOT-HYDRATION manifest.device.json fetch FAILED or malformed");
                         return;
                     }
                     acquireWakeLock();
-                    downloadQueue(lang, devManifest.assets.slice(), devManifest.self, releaseWakeLock);
+                    var totalBytes = 0;
+                    var i;
+                    for (i = 0; i < devManifest.assets.length; i++) {
+                        totalBytes += devManifest.assets[i].size || 0;
+                    }
+                    console.log("PIVOT-HYDRATION starting download: " + devManifest.assets.length +
+                             " assets, " + totalBytes + " bytes total, into v" + remoteVersion);
+                    updateProgress(0);
+                    // Assets land in a version-namespaced directory -- see the comment on
+                    // downloadQueue below for why this isn't just PIVOT_CACHE_ROOT/lang.
+                    var versionedDir = PIVOT_CACHE_ROOT + "/" + lang + "/v" + remoteVersion;
+                    downloadQueue(lang, versionedDir, devManifest.assets.slice(), devManifest.self,
+                        totalBytes, 0, devManifest.assets.length, 0, function () {
+                        console.log("PIVOT-HYDRATION hydration complete for lang=" + lang);
+                        updateProgress(100);
+                        releaseWakeLock();
+                    });
                 });
             });
         });
@@ -152,12 +254,41 @@
 
     // onDone fires exactly once, on every exit path (full completion or an
     // early abort on a failed download), so the wake lock is always released.
-    function downloadQueue(lang, remainingAssets, selfEntry, onDone) {
-        var targetDir = PIVOT_CACHE_ROOT + "/" + lang;
+    // completedBytes/completedFiles accumulate what's fully written so far
+    // (from the manifest's own size field and the queue's own shift(), not a
+    // filesystem stat) so progress only moves forward -- an in-flight file's
+    // amountReceived is added to completedBytes for display but never folded
+    // back into the running total itself.
+    //
+    // versionedDir (PIVOT_CACHE_ROOT/lang/v{N}) is where every PAGE asset
+    // lands -- never PIVOT_CACHE_ROOT/lang directly. Confirmed on-device
+    // 2026-08-21: an app killed mid-hydration left the flat, unversioned
+    // cache directory (the pre-existing design, page filenames identical
+    // across editions/versions) in a state mixing files from two different
+    // editions -- e.g. a page's bindings.json already overwritten by the new
+    // download while its portrait.lo.js hadn't been reached yet -- and the
+    // OLD manifest.json (not yet overwritten, since it downloads last) was
+    // still on disk describing the mix as if it were self-consistent. Magazine
+    // rendering doesn't just show stale content in that state, it breaks
+    // outright (BindableLayout can't resolve a template macro whose value
+    // came from a binding file that's already the new edition's). Every
+    // version's assets going into their own directory makes that impossible:
+    // a killed download just leaves an incomplete v{N} sitting there unused,
+    // and whatever v{N-1} (or earlier) manifest.json is still active on the
+    // fixed top-level path keeps pointing at ITS OWN directory, untouched.
+    // manifest.json itself still lives at the fixed top-level path (not
+    // versioned) -- it's the one thing every launch's read-path needs to find
+    // without already knowing the current version, and it's the only
+    // still-flat-named file this scheme relies on downloadmanager overwriting
+    // cleanly, same as it already reliably did for the v1->v2 bump.
+    function downloadQueue(lang, versionedDir, remainingAssets, selfEntry, totalBytes, completedBytes, totalFiles, completedFiles, onDone) {
+        var pointerDir = PIVOT_CACHE_ROOT + "/" + lang;
         if (remainingAssets.length === 0) {
-            // All page assets are down -- write the local manifest last, so its
-            // presence on disk is itself the "hydration complete" signal.
-            downloadFile(selfEntry.sourceUrl, targetDir, selfEntry.targetFilename, function (ok) {
+            // All page assets are down -- write the local manifest last, at the
+            // fixed (unversioned) pointer location, so its presence there is
+            // itself the "hydration complete AND this is the active version"
+            // signal every launch's read-path checks.
+            downloadFile(selfEntry.sourceUrl, pointerDir, selfEntry.targetFilename, null, function (ok) {
                 // best-effort either way -- a failure here just means we retry
                 // (and re-download everything) on the next version check.
                 onDone();
@@ -165,11 +296,19 @@
             return;
         }
         var asset = remainingAssets.shift();
-        downloadFile(asset.sourceUrl, targetDir, asset.targetFilename, function (ok) {
+        downloadFile(asset.sourceUrl, versionedDir, asset.targetFilename, function (received) {
+            updateProgress(calcPercent(totalBytes, completedBytes + received, totalFiles, completedFiles));
+        }, function (ok) {
             if (!ok) {
+                console.log("PIVOT-HYDRATION download FAILED for " + asset.targetFilename + " -- aborting queue, " +
+                         remainingAssets.length + " assets left unfetched this launch");
                 onDone(); // abort the queue; next launch's version check retries from scratch
                 return;
             }
+            completedBytes += asset.size || 0;
+            completedFiles += 1;
+            markHydrating(); // heartbeat -- see isHydratingElsewhere's comment
+            updateProgress(calcPercent(totalBytes, completedBytes, totalFiles, completedFiles));
             // Paced rather than chained straight through, for two independent reasons
             // both confirmed on-device: (1) rapid-fire calls silently stopped producing
             // responses after a couple dozen in a row, with no error anywhere -- looks
@@ -179,14 +318,14 @@
             // app's splash/launch rendering. Nothing is waiting on this to finish quickly,
             // so pace it gently rather than racing the UI for the thread.
             setTimeout(function () {
-                downloadQueue(lang, remainingAssets, selfEntry, onDone);
+                downloadQueue(lang, versionedDir, remainingAssets, selfEntry, totalBytes, completedBytes, totalFiles, completedFiles, onDone);
             }, 1000);
         });
     }
 
     function readLocalVersion(lang, callback) {
         var xhr = new XMLHttpRequest();
-        xhr.open("GET", PIVOT_CACHE_ROOT + "/" + lang + "/manifest.json", true);
+        xhr.open("GET", PIVOT_CACHE_ROOT + "/" + lang + "/manifest.json?_=" + Date.now(), true);
         xhr.onload = function () {
             if (xhr.status !== 200) { callback(0); return; }
             try {
@@ -211,11 +350,26 @@
         try { xhr.send(); } catch (e) { callback(null); }
     }
 
+    // Heartbeat, not a one-shot lock: markHydrating() is called again after
+    // every file downloadQueue completes (see below), so this timestamp keeps
+    // sliding forward for as long as a hydration run is genuinely still
+    // active. That's load-bearing, not defensive -- a fixed lock set once at
+    // the start (the original design) stays "fresh" from a killed app's point
+    // of view for its whole window regardless of what actually happened, so
+    // swiping the app away mid-download left the next launch's
+    // checkAndHydrate seeing a stale-but-not-yet-expired lock and silently
+    // bailing out with no retry until a THIRD launch, after the fixed window
+    // finally ran out -- confirmed on-device 2026-08-21 (killed at 22%,
+    // relaunch immediately stuck at 0% for the rest of that session). With a
+    // heartbeat, the threshold only needs to outlast the gap between two
+    // consecutive file completions (1s pacing + actual transfer time), not
+    // the whole multi-minute hydration run, so a killed app's lock goes stale
+    // within seconds of the next launch instead of up to 2 minutes.
     function isHydratingElsewhere() {
         try {
             var raw = localStorage.getItem("com.palm.app.findapps.pivotHydrating");
             if (!raw) { return false; }
-            return (Date.now() - parseInt(raw, 10)) < (2 * 60 * 1000);
+            return (Date.now() - parseInt(raw, 10)) < (30 * 1000);
         } catch (e) {
             return false;
         }
@@ -248,9 +402,25 @@
     // falls back to the bundled placeholder (nothing has rendered yet); every
     // later check just leaves whatever's already on screen alone and waits for
     // the next attempt.
+    //
+    // The cache-busting query param is load-bearing, not defensive: this is
+    // the SAME literal URL re-requested every 15s by _startPivotRecheck (and
+    // again on every tab-return) for as long as the placeholder is showing.
+    // The first attempt, made before hydration has written anything, gets a
+    // failure response for a URL WebKit's XHR layer has no reason to treat as
+    // anything but a normal cacheable GET (enyo.xhr.request sets no
+    // Cache-Control/no-cache headers -- see source/dom/xhr.js). Once that
+    // failure is cached, every later poll to the identical URL can keep
+    // being served the same stale failure instead of re-checking disk, even
+    // long after hydration finishes and the file genuinely exists -- which
+    // would explain a magazine that never swaps over without a full app
+    // restart (a fresh process has no cache yet). Same class of bug
+    // archive-patch.js already works around via makeKey() for the museum
+    // API. Not yet confirmed on-device which of the two is the actual cause
+    // here; this fixes the mechanism either way and is cheap regardless.
     MagazineProto._pivotTryHydratedCache = function (isInitial) {
         this.$.webService.call(null, {
-            url: PIVOT_CACHE_ROOT + "/" + this._pivotLang + "/manifest.json",
+            url: PIVOT_CACHE_ROOT + "/" + this._pivotLang + "/manifest.json?_=" + Date.now(),
             handleAs: "json",
             onSuccess: "_pivotHydratedCacheFound",
             onFailure: isInitial ? "_loadBundledPlaceholderEdition" : "_pivotHydratedCacheStillPending"
@@ -271,6 +441,30 @@
 
     MagazineProto._pivotHydratedCacheStillPending = function () {
         // Not ready yet -- the interval (or the next tab visit) just tries again.
+    };
+
+    // A successful manifest.json fetch only proves the POINTER file is
+    // readable, not that everything it points at will actually render --
+    // confirmed on-device 2026-08-21: a cache left inconsistent by an
+    // interrupted hydration (fixed going forward by the versioned-directory
+    // write path above, but this covers ANY other way a hydrated cache could
+    // end up broken) fetched fine, so _pivotHydratedCacheFound declared
+    // victory and cancelled the recheck loop, but the page itself then failed
+    // to render -- and with the recheck already stopped and
+    // _pivotShowingPlaceholder already false, there was no automatic recovery
+    // left at all short of a full app restart, even long after a clean
+    // hydration completed in the background. Falling back to the placeholder
+    // here (only while we currently believe we're showing hydrated content --
+    // the placeholder's own template failing is a separate, unrelated bug,
+    // not something to loop on) re-arms _startPivotRecheck via the normal
+    // path, so a later successful hydration still gets picked up live.
+    var _origHandleDispatchLayoutError = MagazineProto.handleDispatchLayoutError;
+    MagazineProto.handleDispatchLayoutError = function () {
+        if (!this._pivotShowingPlaceholder) {
+            console.log("PIVOT-HYDRATION hydrated cache failed to render -- falling back to placeholder, resuming recheck");
+            this._loadBundledPlaceholderEdition();
+        }
+        return _origHandleDispatchLayoutError.apply(this, arguments);
     };
 
     MagazineProto._loadBundledPlaceholderEdition = function () {
@@ -380,9 +574,12 @@
     // rendering, since native bridge calls and UI paint share one thread).
     // 20s gives the app room to fully launch and settle first.
     // -----------------------------------------------------------------------
+    console.log("PIVOT-HYDRATION module loaded, scheduling checkAndHydrate in 20s");
     setTimeout(function () {
         try {
             checkAndHydrate(resolveLang());
-        } catch (e) {}
+        } catch (e) {
+            console.log("PIVOT-HYDRATION checkAndHydrate threw: " + e);
+        }
     }, 20000);
 }());

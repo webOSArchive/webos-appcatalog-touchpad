@@ -2,7 +2,9 @@
     {kind: "VFlexBox", className: "landscape", style: "background:#1a1a2e;height:768px;width:1024px;",
      pack: "center", align: "center", components: [
         {kind: "VFlexBox", style: "position:relative;top:-50px;", align: "center", components: [
-            {kind: "SpinnerLarge", showing: true, style: "margin-bottom:20px;"},
+            {kind: "Spinner", showing: true, style: "margin-bottom:12px;"},
+            {kind: "ProgressBar", className: "pivot-progress-bar", position: 0, style: "width:280px;margin-bottom:8px;"},
+            {content: "0%", className: "pivot-progress-label", style: "color:#fff;font-size:13px;margin-bottom:20px;"},
             {kind: "Control", content: "Telechargement du dernier numero de Pivot...",
              style: "color:#fff;font-size:20px;text-align:center;padding:0 40px;margin-bottom:30px;"},
             {content: "Voir les applications recentes", className: "pivot-recent-apps-button", target: "recentapps", onclick: "goToTargetAction",

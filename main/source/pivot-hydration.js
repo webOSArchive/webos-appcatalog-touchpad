@@ -160,24 +160,16 @@
     }
 
     // -----------------------------------------------------------------------
-    // Wake lock -- confirmed on-device (2026-08-19) that this is genuinely
-    // needed, not just theoretical: with no lock held, the download queue
-    // repeatedly went completely silent (zero new download requests, download
-    // manager CPU usage near zero) for minutes at a stretch whenever the
-    // device was left alone, then resumed exactly where it left off once
-    // woken/foregrounded again -- consistent with webOS suspending this
-    // page's JS execution on system sleep.
-    //
-    // Two prior attempts via com.palm.power's activityStart/activityEnd left
-    // zero trace in powerd's log despite matching reference implementations.
-    // A guessed `PalmSystem.setWindowProperties(...)` attempt after that was
-    // never even tested against a real proven caller. This is: matches a
-    // genuinely working implementation in webos-papyrus-ereader (another app
-    // on this same platform that needs the screen to stay on/awake during a
-    // long operation -- app/app/Main.js's disableDim/enableDim), which uses
-    // `palm://com.palm.display/control/` via a plain PalmService with NO
-    // static method and a single-argument `.call({blockScreenTimeout: ...})`
-    // -- notably a different service than com.palm.power entirely.
+    // Wake lock -- mirrors webos-papyrus-ereader's disableDim/enableDim
+    // (app/app/Main.js) exactly: a PalmService named "DimService" against
+    // palm://com.palm.display/control/, called directly (no method:, no
+    // params.subscribe) when on-device, falling back to
+    // enyo.windows.setWindowProperties in a non-webOS context. Both this app
+    // (com.palm.app.enyo-findapps) and papyrus (com.palm.codepoet.papyrus)
+    // are com.palm.*-namespaced apps, which get elevated Luna Bus access to
+    // this service beyond what the public SDK docs describe for third-party
+    // apps -- so pattern-match papyrus's proven implementation here rather
+    // than re-deriving one.
     // -----------------------------------------------------------------------
     enyo.kind({
         name: "enyo.FindApps.Magazine.PivotDimService",
@@ -185,26 +177,30 @@
         service: "palm://com.palm.display/control/"
     });
 
-    var pivotDimService = new enyo.FindApps.Magazine.PivotDimService();
+    var pivotDimService = new enyo.FindApps.Magazine.PivotDimService({name: "DimService"});
 
     function acquireWakeLock() {
-        try {
-            if (typeof window !== "undefined" && window.PalmSystem) {
+        if (window.PalmSystem && pivotDimService) {
+            try {
                 pivotDimService.call({blockScreenTimeout: true});
-            } else if (typeof enyo !== "undefined" && enyo.windows && enyo.windows.setWindowProperties) {
-                enyo.windows.setWindowProperties(window, {blockScreenTimeout: true});
+            } catch (e) {
+                console.log("PIVOT-HYDRATION error disabling dim: " + e);
             }
-        } catch (e) {}
+        } else {
+            enyo.windows.setWindowProperties(window, {blockScreenTimeout: true});
+        }
     }
 
     function releaseWakeLock() {
-        try {
-            if (typeof window !== "undefined" && window.PalmSystem) {
+        if (window.PalmSystem && pivotDimService) {
+            try {
                 pivotDimService.call({blockScreenTimeout: false});
-            } else if (typeof enyo !== "undefined" && enyo.windows && enyo.windows.setWindowProperties) {
-                enyo.windows.setWindowProperties(window, {blockScreenTimeout: false});
+            } catch (e) {
+                console.log("PIVOT-HYDRATION error enabling dim: " + e);
             }
-        } catch (e) {}
+        } else {
+            enyo.windows.setWindowProperties(window, {blockScreenTimeout: false});
+        }
     }
 
     // -----------------------------------------------------------------------

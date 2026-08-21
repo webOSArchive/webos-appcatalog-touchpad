@@ -188,27 +188,50 @@
 
     var pivotDimService = new enyo.FindApps.Magazine.PivotDimService({name: "DimService"});
 
+    // Diagnostic only -- logs the actual resolved service+method this
+    // instance will call (PalmService derives method from the component's
+    // name when none is set explicitly), and surfaces whatever the bus
+    // itself says back, since silent success/failure looked identical in
+    // the log otherwise. Overriding responseSuccess/responseFailure directly
+    // (rather than onSuccess/onFailure props, which dispatch through
+    // this.owner -- null here, since pivotDimService has no owner) is what
+    // actually fires regardless of ownership.
+    console.log("PIVOT-HYDRATION DimService resolved to service=" + pivotDimService.service +
+             " method=" + JSON.stringify(pivotDimService.method));
+    pivotDimService.responseSuccess = function (inRequest) {
+        console.log("PIVOT-HYDRATION DimService call SUCCEEDED: " + JSON.stringify(inRequest && inRequest.response));
+    };
+    pivotDimService.responseFailure = function (inRequest) {
+        console.log("PIVOT-HYDRATION DimService call FAILED: " + JSON.stringify(inRequest && inRequest.response));
+    };
+
     function acquireWakeLock() {
+        console.log("PIVOT-HYDRATION acquireWakeLock: window.PalmSystem=" + !!window.PalmSystem);
         if (window.PalmSystem && pivotDimService) {
             try {
                 pivotDimService.call({blockScreenTimeout: true});
+                console.log("PIVOT-HYDRATION acquireWakeLock: DimService.call({blockScreenTimeout:true}) sent");
             } catch (e) {
                 console.log("PIVOT-HYDRATION error disabling dim: " + e);
             }
         } else {
             enyo.windows.setWindowProperties(window, {blockScreenTimeout: true});
+            console.log("PIVOT-HYDRATION acquireWakeLock: used enyo.windows.setWindowProperties fallback");
         }
     }
 
     function releaseWakeLock() {
+        console.log("PIVOT-HYDRATION releaseWakeLock: window.PalmSystem=" + !!window.PalmSystem);
         if (window.PalmSystem && pivotDimService) {
             try {
                 pivotDimService.call({blockScreenTimeout: false});
+                console.log("PIVOT-HYDRATION releaseWakeLock: DimService.call({blockScreenTimeout:false}) sent");
             } catch (e) {
                 console.log("PIVOT-HYDRATION error enabling dim: " + e);
             }
         } else {
             enyo.windows.setWindowProperties(window, {blockScreenTimeout: false});
+            console.log("PIVOT-HYDRATION releaseWakeLock: used enyo.windows.setWindowProperties fallback");
         }
     }
 

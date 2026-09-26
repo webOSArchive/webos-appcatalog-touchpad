@@ -4,7 +4,6 @@
    getAccountToken
    getAccountInfo
    updateAccountInfo
-   getGoogleAnalyticsWebPropertyID
    notifyAuthenticationFailure
    isUserValid
    getAllSecurityQuestions
@@ -142,16 +141,6 @@ enyo.kind({
         inProps = enyo.mixin((inProps?inProps:{}), {
             service: this.service, 
             method: "updateAccountInfo"
-        });
-        this.sendRequest(inParams, inProps);
-    },
-    getGoogleAnalyticsWebPropertyID: function(inProps) {
-        var inParams = {
-            appName: ["APP_DISCO"]
-        };
-        inProps = enyo.mixin((inProps?inProps:{}), {
-            service: this.service, 
-            method: "getPreferences"
         });
         this.sendRequest(inParams, inProps);
     },

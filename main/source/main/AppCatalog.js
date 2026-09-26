@@ -78,7 +78,6 @@ enyo.kind({
     }, ],
     create: function() {
         this.inherited(arguments);
-        this.appMetrics = enyo.application.appMetrics;
         this.firstLaunch = true;
         // Flag to indicate if this AppCatalog has registered with Container to receive 
         // an event when /user/session is successful
@@ -104,7 +103,6 @@ enyo.kind({
 	            this.storedQueries = userSession.queryButtons.HOME;
 	            this.storedQueriesType = "HOME";
 	            this.$.apps.setStoredQuery(this.getQueryByButtonIndex());
-	            if (this.appMetrics) this.appMetrics.trackNewScene("categories/home");
 	            // Update the filter label
 	            this.$.stored_query_1.setCaption($L("Recommended"));
 	        }
@@ -113,7 +111,6 @@ enyo.kind({
 	            this.storedQueries = userSession.queryButtons.DEFAULT;
 	            this.storedQueriesType = "DEFAULT";
 	            this.$.apps.setStoredQuery(this.getQueryByButtonIndex());
-	            if (this.appMetrics) this.appMetrics.trackNewScene("categories/" + selectedCategory.label);
 	            // Update the filter label
 	            this.$.stored_query_1.setCaption($L("Top"));
 	        }
@@ -127,7 +124,6 @@ enyo.kind({
             this.storedQueries = userSession.queryButtons.DEFAULT;
             this.storedQueriesType = "DEFAULT";
             this.$.apps.setStoredQuery(this.getQueryByButtonIndex());
-            if (this.appMetrics) this.appMetrics.trackNewScene("categories/" + selectedCategory.label);
             // Update the filter label
             this.$.stored_query_1.setCaption($L("Top"));
         }
@@ -241,7 +237,6 @@ enyo.kind({
         var query = this.getQueryByButtonIndex();
         this.$.apps.setStoredQuery(query);
         this.$.apps.refresh(true);
-        if (this.appMetrics) this.appMetrics.trackEvent("stored_query/storedQuerySelected");
     },
     handleGetAppsError: function(inSender, errors) {
         this.hideScrim();

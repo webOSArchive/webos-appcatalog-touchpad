@@ -1,7 +1,4 @@
  enyo.depends(
-	"analytics/google-analytics.js",
-	"analytics/app-metrics.js",
-	"analytics/ga/ga.js",
     "services/WebService.js",
     "services/PalmService.js",
     "services/BaseServer.js",

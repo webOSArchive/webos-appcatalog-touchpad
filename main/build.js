@@ -1,866 +1,3 @@
-// lib/analytics/google-analytics.js
-
-function GoogleAnalytics(a) {
-function e(a) {
-c ? _gaq.push(a) : d.push(a);
-}
-function f(a, b, c) {
-a != undefined && typeof a != c && console.error("GoogleAnalytics#trackEvent: " + b + " must be a " + c + " - event will not be tracked");
-}
-var b = {}, c = !1, d = [];
-return b.accountId = a, b.trackPageview = function(a) {
-e([ "_trackPageview", a ]);
-}, b.setAccountId = function(a) {
-b.accountId = a, e([ "_setAccount", b.accountId ]), e([ "_trackPageview", "/" ]);
-}, b.trackEvent = function() {
-var a = [ "_trackEvent" ];
-a.push.apply(a, arguments), e(a), f(arguments[2], "label", "string"), f(arguments[3], "value", "number");
-}, b.setInternetConnection = function(a) {
-c = a, c && d.length > 0 && d.forEach(function(a) {
-console.log("GoogleAnalytics#setInternetConnection: FLUSHED ITEM [%s, %s]", a[0], a[1]), _gaq.push(a);
-});
-}, b.hasInternetConnection = function() {
-return c;
-}, b;
-}
-
-// lib/analytics/app-metrics.js
-
-function AppMetrics(a) {
-var b = {}, c = new GoogleAnalytics(a);
-return b.setInternetConnection = function(a) {
-c.setInternetConnection(a);
-}, b.setAccountId = function(a) {
-c.setAccountId(a);
-}, b.trackEvent = function() {
-c.trackEvent.apply(c, arguments);
-}, b.trackLaunch = function(a) {
-c.trackEvent("Launch", "Version", a);
-}, b.trackNewScene = function(a) {
-c.trackPageview(a);
-}, b.trackRegistration = function(a) {
-if (!localStorage) return;
-var c = localStorage.getItem("com.palm.app.findapps.RegistrationKey");
-c != a && (b.trackEvent("Registration", a), localStorage.setItem("com.palm.app.findapps.RegistrationKey", a)), AppMetrics.registrationKey = c;
-}, b;
-}
-
-AppMetrics.registrationKey = "AppMetrics__Registration";
-
-// lib/analytics/ga/ga.js
-
-(function() {
-function M() {
-var a = window[b], c = d;
-if (a && typeof a.push == "function") {
-c = a.constructor == Array;
-if (!c) return;
-}
-window[b] = L, c && L.push.apply(L, a);
-}
-var a = "_gat", b = "_gaq", c = !0, d = !1, e = undefined, f = "4.6.5", g = "length", h = "cookie", i = "location", j = "&", k = "=", l = "__utma=", m = "__utmb=", n = "__utmc=", o = "__utmk=", p = "__utmv=", q = "__utmz=", r = "__utmx=", s = "GASO=", t = function(a) {
-return e == a || "-" == a || "" == a;
-}, u = function(a) {
-return a[g] > 0 && " \n\r\t".indexOf(a) > -1;
-}, v = function(a, b, c) {
-var d = "-", e;
-return !t(a) && !t(b) && !t(c) && (e = a.indexOf(b), e > -1 && (c = a.indexOf(c, e), c < 0 && (c = a[g]), d = E(a, e + b.indexOf(k) + 1, c))), d;
-}, w = function(a) {
-var b = d, e = 0, f, h;
-if (!t(a)) {
-b = c;
-for (f = 0; f < a[g]; f++) h = a.charAt(f), e += "." == h ? 1 : 0, b = b && e <= 1 && (0 == f && "-" == h || ".0123456789".indexOf(h) > -1);
-}
-return b;
-}, x = function(a, b) {
-var c = encodeURIComponent;
-return c instanceof Function ? b ? encodeURI(a) : c(a) : escape(a);
-}, y = function(a, b) {
-var c = decodeURIComponent, d;
-a = a.split("+").join(" ");
-if (c instanceof Function) try {
-d = b ? decodeURI(a) : c(a);
-} catch (e) {
-d = unescape(a);
-} else d = unescape(a);
-return d;
-}, z = function(a, b) {
-return a.indexOf(b) > -1;
-}, A = function(a, b) {
-a[a[g]] = b;
-}, B = function(a) {
-return a.toLowerCase();
-}, C = function(a, b) {
-return a.split(b);
-}, D = function(a, b) {
-return a.indexOf(b);
-}, E = function(a, b, c) {
-return c = e == c ? a[g] : c, a.substring(b, c);
-}, F = function(a, b) {
-return a.join(b);
-}, G = function(a) {
-var b = 1, c = 0, d;
-if (!t(a)) {
-b = 0;
-for (d = a[g] - 1; d >= 0; d--) c = a.charCodeAt(d), b = (b << 6 & 268435455) + c + (c << 14), c = b & 266338304, b = c != 0 ? b ^ c >> 21 : b;
-}
-return b;
-}, H = function() {
-var a = window, b = e;
-return a && a.gaGlobal && a.gaGlobal.hid ? b = a.gaGlobal.hid : (b = I(), a.gaGlobal = a.gaGlobal ? a.gaGlobal : {}, a.gaGlobal.hid = b), b;
-}, I = function() {
-return Math.round(Math.random() * 2147483647);
-}, J = {
-Ha: function(a, b) {
-this.bb = a, this.nb = b;
-},
-ib: d,
-_gasoDomain: e,
-_gasoCPath: e
-};
-J.Gb = function() {
-function a(a) {
-return new f(a[0], a[1]);
-}
-function b(b) {
-var c = [];
-b = b.split(",");
-var d;
-for (d = 0; d < b.length; ++d) c.push(a(b[d].split(":")));
-return c;
-}
-var c = this, f = J.Ha;
-c.Ia = "utm_campaign", c.Ja = "utm_content", c.Ka = "utm_id", c.La = "utm_medium", c.Ma = "utm_nooverride", c.Na = "utm_source", c.Oa = "utm_term", c.Pa = "gclid", c.ba = 0, c.z = 0, c.Ta = 15768e6, c.sb = 18e5, c.v = 63072e6, c.ta = [], c.va = [], c.nc = "cse", c.oc = "q", c.ob = 5, c.T = b("daum:q,eniro:search_word,naver:query,images.google:q,google:q,yahoo:p,msn:q,bing:q,aol:query,aol:encquery,lycos:query,ask:q,altavista:q,netscape:query,cnn:query,about:terms,mamma:query,alltheweb:q,voila:rdata,virgilio:qs,live:q,baidu:wd,alice:qs,yandex:text,najdi:q,aol:q,mama:query,seznam:q,search:q,wp:szukaj,onet:qt,szukacz:q,yam:k,pchome:q,kvasir:q,sesam:q,ozu:q,terra:query,mynet:q,ekolay:q,rambler:words"), c.t = e, c.lb = d, c.h = "/", c.U = 100, c.oa = "/__utm.gif", c.ga = 1, c.ha = 1, c.u = "|", c.fa = 1, c.da = 1, c.Ra = 1, c.b = "auto", c.I = 1, c.ra = 1e3, c.Jc = 10, c.Pb = 10, c.Kc = .2, c.o = e, c.a = document, c.e = window;
-}, J.Hb = function(a) {
-function b(a, b, c, d) {
-var e = "", f = 0;
-e = v(a, "2" + b, ";");
-if (!t(e)) {
-a = e.indexOf("^" + c + ".");
-if (a < 0) return [ "", 0 ];
-e = E(e, a + c[g] + 2), e.indexOf("^") > 0 && (e = e.split("^")[0]), c = e.split(":"), e = c[1], f = parseInt(c[0], 10), !d && f < i.r && (e = "");
-}
-return t(e) && (e = ""), [ e, f ];
-}
-function d(a, b) {
-return "^" + F([ [ b, a[1] ].join("."), a[0] ], ":");
-}
-function e(a, b) {
-j.a[h] = a + "; path=" + j.h + "; " + b + i.fb();
-}
-function f(a) {
-var b = new Date;
-return a = new Date(b.getTime() + a), "expires=" + a.toGMTString() + "; ";
-}
-var i = this, j = a;
-i.r = (new Date).getTime();
-var k = [ l, m, n, q, p, r, s ];
-i.k = function() {
-var a = j.a[h];
-return j.o ? i.Wb(a, j.o) : a;
-}, i.Wb = function(a, c) {
-var d = [], e, f;
-for (e = 0; e < k[g]; e++) f = b(a, k[e], c)[0], t(f) || (d[d[g]] = k[e] + f + ";");
-return d.join("");
-}, i.l = function(a, b, c) {
-var d = c > 0 ? f(c) : "";
-j.o && (b = i.kc(j.a[h], a, j.o, b, c), a = "2" + a, d = c > 0 ? f(j.v) : ""), e(a + b, d);
-}, i.kc = function(a, e, f, g, h) {
-var k = "";
-return h = h || j.v, g = d([ g, i.r + h * 1 ], f), k = v(a, "2" + e, ";"), t(k) ? g : (a = d(b(a, e, f, c), f), k = F(k.split(a), ""), k = g + k);
-}, i.fb = function() {
-return t(j.b) ? "" : "domain=" + j.b + ";";
-};
-}, J.$ = function(a) {
-function b(a) {
-return a = a instanceof Array ? a.join(".") : "", t(a) ? "-" : a;
-}
-function f(a, b) {
-var c = [];
-if (!t(a)) {
-c = a.split(".");
-if (b) for (a = 0; a < c[g]; a++) w(c[a]) || (c[a] = "-");
-}
-return c;
-}
-function h(a, b, c) {
-var d = C.M, e, f;
-for (e = 0; e < d[g]; e++) f = d[e][0], f += t(b) ? b : b + d[e][4], d[e][2](v(a, f, c));
-}
-var i, k, u, x, y, z, B, C = this, D, E = a;
-C.j = new J.Hb(a), C.kb = function() {
-return e == D || D == C.P();
-}, C.k = function() {
-return C.j.k();
-}, C.ma = function() {
-return y ? y : "-";
-}, C.vb = function(a) {
-y = a;
-}, C.za = function(a) {
-D = w(a) ? a * 1 : "-";
-}, C.la = function() {
-return b(z);
-}, C.Aa = function(a) {
-z = f(a);
-}, C.Vb = function() {
-C.j.l(p, "", -1);
-}, C.lc = function() {
-return D ? D : "-";
-}, C.fb = function() {
-return t(E.b) ? "" : "domain=" + E.b + ";";
-}, C.ja = function() {
-return b(i);
-}, C.tb = function(a) {
-i = f(a, 1);
-}, C.C = function() {
-return b(k);
-}, C.ya = function(a) {
-k = f(a, 1);
-}, C.ka = function() {
-return b(u);
-}, C.ub = function(a) {
-u = f(a, 1);
-}, C.na = function() {
-return b(x);
-}, C.wb = function(a) {
-x = f(a);
-for (a = 0; a < x[g]; a++) a < 4 && !w(x[a]) && (x[a] = "-");
-}, C.fc = function() {
-return B;
-}, C.Dc = function(a) {
-B = a;
-}, C.Sb = function() {
-i = [], k = [], u = [], x = [], y = e, z = [], D = e;
-}, C.P = function() {
-var a = "", b;
-for (b = 0; b < C.M[g]; b++) a += C.M[b][1]();
-return G(a);
-}, C.ua = function(a) {
-var b = C.k(), e = d;
-return b && (h(b, a, ";"), C.za(C.P()), e = c), e;
-}, C.zc = function(a) {
-h(a, "", j), C.za(v(a, o, j));
-}, C.Hc = function() {
-var a = C.M, b = [], c;
-for (c = 0; c < a[g]; c++) A(b, a[c][0] + a[c][1]());
-return A(b, o + C.P()), b.join(j);
-}, C.Nc = function(a, b) {
-var c = C.M, d = E.h;
-C.ua(a), E.h = b;
-for (a = 0; a < c[g]; a++) t(c[a][1]()) || c[a][3]();
-E.h = d;
-}, C.Cb = function() {
-C.j.l(l, C.ja(), E.v);
-}, C.Ea = function() {
-C.j.l(m, C.C(), E.sb);
-}, C.Db = function() {
-C.j.l(n, C.ka(), 0);
-}, C.Ga = function() {
-C.j.l(q, C.na(), E.Ta);
-}, C.Eb = function() {
-C.j.l(r, C.ma(), E.v);
-}, C.Fa = function() {
-C.j.l(p, C.la(), E.v);
-}, C.Oc = function() {
-C.j.l(s, C.fc(), 0);
-}, C.M = [ [ l, C.ja, C.tb, C.Cb, "." ], [ m, C.C, C.ya, C.Ea, "" ], [ n, C.ka, C.ub, C.Db, "" ], [ r, C.ma, C.vb, C.Eb, "" ], [ q, C.na, C.wb, C.Ga, "." ], [ p, C.la, C.Aa, C.Fa, "." ] ];
-}, J.Kb = function(a) {
-var b = this, c = a, d = new J.$(c), e = function() {}, h = function(a) {
-var b = (new Date).getTime(), d;
-return d = (b - a[3]) * (c.Kc / 1e3), d >= 1 && (a[2] = Math.min(Math.floor(a[2] * 1 + d), c.Pb), a[3] = b), a;
-};
-b.H = function(a, g, j, k, l, m) {
-var n, o = c.I, p = c.a[i];
-d.ua(j), n = C(d.C(), ".");
-if (n[1] < 500 || k) {
-l && (n = h(n));
-if (k || !l || n[2] >= 1) {
-!k && l && (n[2] = n[2] * 1 - 1), n[1] = n[1] * 1 + 1, a = "?utmwv=" + f + "&utmn=" + I() + (t(p.hostname) ? "" : "&utmhn=" + x(p.hostname)) + (c.U == 100 ? "" : "&utmsp=" + x(c.U)) + a;
-if (0 == o || 2 == o) k = 2 == o ? e : m || e, b.$a(c.oa + a, k);
-if (1 == o || 2 == o) a = ("https:" == p.protocol ? "https://ssl.google-analytics.com/__utm.gif" : "http://www.google-analytics.com/__utm.gif") + a + "&utmac=" + g + "&utmcc=" + b.ac(j), K && (a += "&gaq=1"), b.$a(a, m);
-}
-}
-d.ya(n.join(".")), d.Ea();
-}, b.$a = function(a, b) {
-var c = new Image(1, 1);
-c.src = a, c.onload = function() {
-c.onload = null, (b || e)();
-};
-}, b.ac = function(a) {
-var b = [], c = [ l, q, p, r ], e, f = d.k(), h;
-for (e = 0; e < c[g]; e++) {
-h = v(f, c[e] + a, ";");
-if (!t(h)) {
-if (c[e] == p) {
-h = C(h.split(a + ".")[1], "|")[0];
-if (t(h)) continue;
-h = a + "." + h;
-}
-A(b, c[e] + h + ";");
-}
-}
-return x(b.join("+"));
-};
-}, J.n = function() {
-var a = this;
-a.Y = [], a.hb = function(b) {
-var c, d = a.Y, e;
-for (e = 0; e < d.length; e++) c = b == d[e].q ? d[e] : c;
-return c;
-}, a.Ob = function(b, c, d, f, g, h, i, j) {
-var k = a.hb(b);
-return e == k ? (k = new J.n.Mb(b, c, d, f, g, h, i, j), A(a.Y, k)) : (k.Qa = c, k.Ab = d, k.zb = f, k.xb = g, k.Xa = h, k.yb = i, k.Za = j), k;
-};
-}, J.n.Lb = function(a, b, c, d, e, f) {
-var g = this;
-g.Bb = a, g.Ba = b, g.D = c, g.Va = d, g.pb = e, g.qb = f, g.Ca = function() {
-return "&" + [ "utmt=item", "tid=" + x(g.Bb), "ipc=" + x(g.Ba), "ipn=" + x(g.D), "iva=" + x(g.Va), "ipr=" + x(g.pb), "iqt=" + x(g.qb) ].join("&utm");
-};
-}, J.n.Mb = function(a, b, c, d, f, g, h, i) {
-var j = this;
-j.q = a, j.Qa = b, j.Ab = c, j.zb = d, j.xb = f, j.Xa = g, j.yb = h, j.Za = i, j.R = [], j.Nb = function(a, b, c, d, f) {
-var g = j.gc(a), h = j.q;
-e == g ? A(j.R, new J.n.Lb(h, a, b, c, d, f)) : (g.Bb = h, g.Ba = a, g.D = b, g.Va = c, g.pb = d, g.qb = f);
-}, j.gc = function(a) {
-var b, c = j.R, d;
-for (d = 0; d < c.length; d++) b = a == c[d].Ba ? c[d] : b;
-return b;
-}, j.Ca = function() {
-return "&" + [ "utmt=tran", "id=" + x(j.q), "st=" + x(j.Qa), "to=" + x(j.Ab), "tx=" + x(j.zb), "sp=" + x(j.xb), "ci=" + x(j.Xa), "rg=" + x(j.yb), "co=" + x(j.Za) ].join("&utmt");
-};
-}, J.Fb = function(a) {
-function b() {
-var a, b, c;
-b = "ShockwaveFlash";
-var d = "$version", h = f.d ? f.d.plugins : e;
-if (h && h[g] > 0) for (a = 0; a < h[g] && !c; a++) b = h[a], z(b.name, "Shockwave Flash") && (c = b.description.split("Shockwave Flash ")[1]); else {
-b = b + "." + b;
-try {
-a = new ActiveXObject(b + ".7"), c = a.GetVariable(d);
-} catch (j) {}
-if (!c) try {
-a = new ActiveXObject(b + ".6"), c = "WIN 6,0,21,0", a.AllowScriptAccess = "always", c = a.GetVariable(d);
-} catch (k) {}
-if (!c) try {
-a = new ActiveXObject(b), c = a.GetVariable(d);
-} catch (l) {}
-c && (c = C(c.split(" ")[1], ","), c = c[0] + "." + c[1] + " r" + c[2]);
-}
-return c ? c : i;
-}
-var c = a, d = c.e, f = this, i = "-";
-f.V = d.screen, f.Sa = !f.V && d.java ? java.awt.Toolkit.getDefaultToolkit() : e, f.d = d.navigator, f.W = i, f.xa = i, f.Wa = i, f.qa = i, f.pa = 1, f.eb = i, f.bc = function() {
-var a;
-if (d.screen) f.W = f.V.width + "x" + f.V.height, f.xa = f.V.colorDepth + "-bit"; else if (f.Sa) try {
-a = f.Sa.getScreenSize(), f.W = a.width + "x" + a.height;
-} catch (e) {}
-f.qa = B(f.d && f.d.language ? f.d.language : f.d && f.d.browserLanguage ? f.d.browserLanguage : i), f.pa = f.d && f.d.javaEnabled() ? 1 : 0, f.eb = c.ha ? b() : i, f.Wa = x(c.a.characterSet ? c.a.characterSet : c.a.charset ? c.a.charset : i);
-}, f.Ic = function() {
-return j + "utm" + [ "cs=" + x(f.Wa), "sr=" + f.W, "sc=" + f.xa, "ul=" + f.qa, "je=" + f.pa, "fl=" + x(f.eb) ].join("&utm");
-}, f.$b = function() {
-var a = c.a, b = d.history[g];
-a = f.d.appName + f.d.version + f.qa + f.d.platform + f.d.userAgent + f.pa + f.W + f.xa + (a[h] ? a[h] : "") + (a.referrer ? a.referrer : "");
-for (var e = a[g]; b > 0; ) a += b-- ^ e++;
-return G(a);
-};
-}, J.m = function(a, b, f, h) {
-function m(a) {
-var b = "";
-return a = B(a.split("://")[1]), z(a, "/") && (a = a.split("/")[1], z(a, "?") && (b = a.split("?")[0])), b;
-}
-function n(a) {
-var b = "";
-return b = B(a.split("://")[1]), z(b, "/") && (b = b.split("/")[0]), b;
-}
-var o = h, p = this;
-p.c = a, p.rb = b, p.r = f, p.ic = function(a) {
-var b = p.gb();
-return new J.m.w(v(a, o.Ka + k, j), v(a, o.Na + k, j), v(a, o.Pa + k, j), p.Q(a, o.Ia, "(not set)"), p.Q(a, o.La, "(not set)"), p.Q(a, o.Oa, b && !t(b.K) ? y(b.K) : e), p.Q(a, o.Ja, e));
-}, p.jb = function(a) {
-var b = n(a), e = m(a);
-if (z(b, "google")) {
-a = a.split("?").join(j);
-if (z(a, j + o.oc + k) && e == o.nc) return c;
-}
-return d;
-}, p.gb = function() {
-var a, b = p.rb, c, d, f = o.T;
-if (!(t(b) || "0" == b || !z(b, "://") || p.jb(b))) {
-a = n(b);
-for (c = 0; c < f[g]; c++) {
-d = f[c];
-if (z(a, B(d.bb))) {
-b = b.split("?").join(j);
-if (z(b, j + d.nb + k)) return a = b.split(j + d.nb + k)[1], z(a, j) && (a = a.split(j)[0]), new J.m.w(e, d.bb, e, "(organic)", "organic", a, e);
-}
-}
-}
-}, p.Q = function(a, b, c) {
-return a = v(a, b + k, j), c = t(a) ? t(c) ? "-" : c : y(a);
-}, p.uc = function(a) {
-var b = o.ta, c = d, e;
-if (a && "organic" == a.S) {
-a = B(y(a.K));
-for (e = 0; e < b[g]; e++) c = c || B(b[e]) == a;
-}
-return c;
-}, p.hc = function() {
-var a = "", b = "";
-a = p.rb;
-if (!(t(a) || "0" == a || !z(a, "://") || p.jb(a))) return a = a.split("://")[1], z(a, "/") && (b = E(a, a.indexOf("/")), b = b.split("?")[0], a = B(a.split("/")[0])), 0 == a.indexOf("www.") && (a = E(a, 4)), new J.m.w(e, a, e, "(referral)", "referral", e, b);
-}, p.Xb = function(a) {
-var b = "";
-return o.ba && (b = a && a.hash ? a.href.substring(a.href.indexOf("#")) : "", b = "" != b ? b + j : b), b += a.search, b;
-}, p.dc = function() {
-return new J.m.w(e, "(direct)", e, "(direct)", "(none)", e, e);
-}, p.vc = function(a) {
-var b = d, c, e = o.va;
-if (a && "referral" == a.S) {
-a = B(x(a.X));
-for (c = 0; c < e[g]; c++) b = b || z(a, B(e[c]));
-}
-return b;
-}, p.L = function(a) {
-return e != a && a.mb();
-}, p.cc = function(a, b) {
-var c = "", d = "-", e, f = 0, g, h, m = p.c;
-if (!a) return "";
-h = a.k(), c = p.Xb(o.a[i]);
-if (o.z && a.kb()) {
-d = a.na();
-if (!t(d) && !z(d, ";")) return a.Ga(), "";
-}
-d = v(h, q + m + ".", ";"), e = p.ic(c);
-if (p.L(e)) {
-c = v(c, o.Ma + k, j);
-if ("1" == c && !t(d)) return "";
-}
-if (!p.L(e)) {
-e = p.gb();
-if (!t(d) && p.uc(e)) return "";
-}
-if (!p.L(e) && b) {
-e = p.hc();
-if (!t(d) && p.vc(e)) return "";
-}
-return p.L(e) || t(d) && b && (e = p.dc()), p.L(e) ? (t(d) || (f = d.split("."), g = new J.m.w, g.Zb(f.slice(4).join(".")), g = B(g.Da()) == B(e.Da()), f = f[3] * 1), !g || b ? (b = v(h, l + m + ".", ";"), h = b.lastIndexOf("."), b = h > 9 ? E(b, h + 1) * 1 : 0, f++, b = 0 == b ? 1 : b, a.wb([ m, p.r, b, f, e.Da() ].join(".")), a.Ga(), j + "utmcn=1") : j + "utmcr=1") : "";
-};
-}, J.m.w = function(a, b, c, d, e, f, h) {
-var i = this;
-i.q = a, i.X = b, i.ea = c, i.D = d, i.S = e, i.K = f, i.Ya = h, i.Da = function() {
-var a = [], b = [ [ "cid", i.q ], [ "csr", i.X ], [ "gclid", i.ea ], [ "ccn", i.D ], [ "cmd", i.S ], [ "ctr", i.K ], [ "cct", i.Ya ] ], c, d;
-if (i.mb()) for (c = 0; c < b[g]; c++) t(b[c][1]) || (d = b[c][1].split("+").join("%20"), d = d.split(" ").join("%20"), A(a, "utm" + b[c][0] + k + d));
-return a.join("|");
-}, i.mb = function() {
-return !(t(i.q) && t(i.X) && t(i.ea));
-}, i.Zb = function(a) {
-var b = function(b) {
-return y(v(a, "utm" + b + k, "|"));
-};
-i.q = b("cid"), i.X = b("csr"), i.ea = b("gclid"), i.D = b("ccn"), i.S = b("cmd"), i.K = b("ctr"), i.Ya = b("cct");
-};
-}, J.Ib = function(a, b, e, f) {
-function h(a, b, c) {
-var d;
-if (!t(c)) {
-c = c.split(",");
-for (var e = 0; e < c[g]; e++) d = c[e], t(d) || (d = d.split(l), d[g] == 4 && (b[d[0]] = [ d[1], d[2], a ]));
-}
-}
-var i = this, j = b, l = k, m = a, n = f;
-i.O = e, i.sa = "", i.p = {}, i.tc = function() {
-var a;
-a = C(v(i.O.k(), p + j + ".", ";"), j + ".")[1], t(a) || (a = a.split("|"), h(1, i.p, a[1]), i.sa = a[0], i.Z());
-}, i.Z = function() {
-i.Qb();
-var a = i.sa, b, c, d = "";
-for (b in i.p) (c = i.p[b]) && 1 === c[2] && (d += b + l + c[0] + l + c[1] + l + 1 + ",");
-t(d) || (a += "|" + d), t(a) ? i.O.Vb() : (i.O.Aa(j + "." + a), i.O.Fa());
-}, i.Ec = function(a) {
-i.sa = a, i.Z();
-}, i.Cc = function(a, b, e, f) {
-1 != f && 2 != f && 3 != f && (f = 3);
-var h = d;
-return b && e && a > 0 && a <= m.ob && (b = x(b), e = x(e), b[g] + e[g] <= 64 && (i.p[a] = [ b, e, f ], i.Z(), h = c)), h;
-}, i.mc = function(a) {
-if ((a = i.p[a]) && 1 === a[2]) return a[1];
-}, i.Ub = function(a) {
-var b = i.p;
-b[a] && (delete b[a], i.Z());
-}, i.Qb = function() {
-n._clearKey(8), n._clearKey(9), n._clearKey(11);
-var a = i.p, b, c;
-for (c in a) if (b = a[c]) n._setKey(8, c, b[0]), n._setKey(9, c, b[1]), (b = b[2]) && 3 != b && n._setKey(11, c, "" + b);
-};
-}, J.N = function() {
-function a(a, b, c, d) {
-e == k[a] && (k[a] = {}), e == k[a][b] && (k[a][b] = []), k[a][b][c] = d;
-}
-function b(a, b) {
-if (e != k[a] && e != k[a][b]) {
-k[a][b] = e, b = c;
-var f;
-for (f = 0; f < n[g]; f++) if (e != k[a][n[f]]) {
-b = d;
-break;
-}
-b && (k[a] = e);
-}
-}
-function f(a) {
-var b = "", f = d, i, j;
-for (i = 0; i < n[g]; i++) j = a[n[i]], e != j ? (f && (b += n[i]), b += h(j), f = d) : f = c;
-return b;
-}
-function h(a) {
-var b = [], c, d;
-for (d = 0; d < a[g]; d++) e != a[d] && (c = "", d != u && e == a[d - 1] && (c += d + "" + r), c += i(a[d]), A(b, c));
-return o + b.join(q) + p;
-}
-function i(a) {
-var b = "", c, d, f;
-for (c = 0; c < a[g]; c++) d = a.charAt(c), f = t[d], b += e != f ? f : d;
-return b;
-}
-var j = this, k = {}, l = "k", m = "v", n = [ l, m ], o = "(", p = ")", q = "*", r = "!", s = "'", t = {};
-t[s] = "'0", t[p] = "'1", t[q] = "'2", t[r] = "'3";
-var u = 1;
-j.qc = function(a) {
-return e != k[a];
-}, j.G = function() {
-var a = "", b;
-for (b in k) e != k[b] && (a += b + "" + f(k[b]));
-return a;
-}, j.Ac = function(a) {
-if (a == e) return j.G();
-var b = a.G(), c;
-for (c in k) e != k[c] && !a.qc(c) && (b += c + "" + f(k[c]));
-return b;
-}, j._setKey = function(b, e, f) {
-return typeof f != "string" ? d : (a(b, l, e, f), c);
-}, j._setValue = function(b, f, g) {
-return (typeof g == "number" || e != Number && g instanceof Number) && Math.round(g) == g && g != NaN && g != Infinity ? (a(b, m, f, g + ""), c) : d;
-}, j._getKey = function(a, b) {
-return e != k[a] && e != k[a][l] ? k[a][l][b] : e;
-}, j._getValue = function(a, b) {
-return e != k[a] && e != k[a][m] ? k[a][m][b] : e;
-}, j._clearKey = function(a) {
-b(a, l);
-}, j._clearValue = function(a) {
-b(a, m);
-};
-}, J.Jb = function(a, b) {
-var c = this;
-c.Qc = b, c.xc = a, c._trackEvent = function(a, d, e) {
-return b._trackEvent(c.xc, a, d, e);
-};
-}, J.aa = function(a, b) {
-function h() {
-if ("auto" == M.b) {
-var a = M.a.domain;
-"www." == E(a, 0, 4) && (a = E(a, 4)), M.b = a;
-}
-M.b = B(M.b);
-}
-function k() {
-var a = M.b, b = a.indexOf("www.google.") * a.indexOf(".google.") * a.indexOf("google.");
-return b || "/" != M.h || a.indexOf("google.org") > -1;
-}
-function o(a, b, c) {
-return t(a) || t(b) || t(c) ? "-" : (a = v(a, l + K.c + ".", b), t(a) || (a = a.split("."), a[5] = a[5] ? a[5] * 1 + 1 : 1, a[3] = a[4], a[4] = c, a = a.join(".")), a);
-}
-function p() {
-return !0;
-}
-function q(a) {
-if (!a || "" == a) return "";
-for (; u(a.charAt(0)); ) a = E(a, 1);
-for (; u(a.charAt(a[g] - 1)); ) a = E(a, 0, a[g] - 1);
-return a;
-}
-function r(a, b, c, d) {
-t(a()) || (b(d ? y(a()) : a()), z(a(), ";") || c());
-}
-function w(a) {
-var b, c = "" != a && M.a[i].host != a;
-if (c) for (b = 0; b < M.t[g]; b++) c = c && D(B(a), B(M.t[b])) == -1;
-return c;
-}
-var K = this, L = e, M = new J.Gb, Q = d, R = e;
-K.e = window, K.r = Math.round((new Date).getTime() / 1e3), K.s = a || "UA-XXXXX-X", K.ab = M.a.referrer, K.ia = e, K.f = e, K.B = e, K.F = d, K.A = e, K.Ua = "", K.g = e, K.cb = e, K.c = e, K.i = e, M.o = b ? x(b) : e, K.wc = function() {
-var a = d;
-return K.B && (a = K.B.match(/^[0-9a-z-_.]{10,1200}$/i)), a;
-}, K.jc = function() {
-return I() ^ K.A.$b() & 2147483647;
-}, K.ec = function() {
-return !M.b || "" == M.b || "none" == M.b ? (M.b = "", 1) : (h(), M.Ra ? G(M.b) : 1);
-}, K.Yb = function(a, b) {
-return t(a) ? a = "-" : (b += M.h && "/" != M.h ? M.h : "", b = a.indexOf(b), a = b >= 0 && b <= 8 ? "0" : "[" == a.charAt(0) && "]" == a.charAt(a[g] - 1) ? "-" : a), a;
-}, K.wa = function(a) {
-var b = "", c = M.a;
-return b += M.fa ? K.A.Ic() : "", b += M.da ? K.Ua : "", b += M.ga && !t(c.title) ? "&utmdt=" + x(c.title) : "", b += "&utmhid=" + H() + "&utmr=" + x(K.ia) + "&utmp=" + x(K.Bc(a)), b;
-}, K.Bc = function(a) {
-var b = M.a[i];
-return a = e != a && "" != a ? x(a, c) : x(b.pathname + b.search, c);
-}, K.Lc = function(a) {
-if (K.J()) {
-var b = "";
-K.g != e && K.g.G()[g] > 0 && (b += "&utme=" + x(K.g.G())), b += K.wa(a), L.H(b, K.s, K.c);
-}
-}, K.Tb = function() {
-var a = new J.$(M);
-return a.ua(K.c) ? a.Hc() : e;
-}, K._getLinkerUrl = function(a, b) {
-var c = a.split("#"), d = a, e = K.Tb();
-if (e) if (b && 1 >= c[g]) d += "#" + e; else if (!b || 1 >= c[g]) 1 >= c[g] ? d += (z(a, "?") ? j : "?") + e : d = c[0] + (z(a, "?") ? j : "?") + e + "#" + c[1];
-return d;
-}, K.Fc = function() {
-var a;
-K.wc() && (K.i.Dc(K.B), K.i.Oc(), J._gasoDomain = M.b, J._gasoCPath = M.h, a = M.a.createElement("script"), a.type = "text/javascript", a.id = "_gasojs", a.src = "https://www.google.com/analytics/reporting/overlay_js?gaso=" + K.B + j + I(), M.a.getElementsByTagName("head")[0].appendChild(a));
-}, K.pc = function() {
-var a = K.r, b = K.i, f = b.k(), g = K.c + "", h = M.e, k = h ? h.gaGlobal : e, p, q = z(f, l + g + "."), s = z(f, m + g), u = z(f, n + g), w, x = [], y = "", A = d;
-f = t(f) ? "" : f, M.z && (p = M.a[i] && M.a[i].hash ? M.a[i].href.substring(M.a[i].href.indexOf("#")) : "", M.ba && !t(p) && (y = p + j), y += M.a[i].search, !t(y) && z(y, l) && (b.zc(y), b.kb() || b.Sb(), w = b.ja()), r(b.ma, b.vb, b.Eb, !0), r(b.la, b.Aa, b.Fa)), t(w) ? q ? !s || !u ? (w = o(f, ";", a), K.F = c) : (w = v(f, l + g + ".", ";"), x = C(v(f, m + g, ";"), ".")) : (w = F([ g, K.jc(), a, a, a, 1 ], "."), A = K.F = c) : t(b.C()) || t(b.ka()) ? (w = o(y, j, a), K.F = c) : (x = C(b.C(), "."), g = x[0]), w = w.split("."), h && k && k.dh == g && !M.o && (w[4] = k.sid ? k.sid : w[4], A && (w[3] = k.sid ? k.sid : w[4], k.vid && (a = k.vid.split("."), w[1] = a[0], w[2] = a[1]))), b.tb(w.join(".")), x[0] = g, x[1] = x[1] ? x[1] : 0, x[2] = e != x[2] ? x[2] : M.Jc, x[3] = x[3] ? x[3] : w[4], b.ya(x.join(".")), b.ub(g), t(b.lc()) || b.za(b.P()), b.Cb(), b.Ea(), b.Db();
-}, K.rc = function() {
-L = new J.Kb(M);
-}, K._initData = function() {
-var a;
-Q || (K.A || (K.A = new J.Fb(M), K.A.bc()), K.c = K.ec(), K.i = new J.$(M), K.g = new J.N, R = new J.Ib(M, K.c, K.i, K.g), K.rc()), p() && (K.pc(), R.tc()), Q || (p() && (K.ia = K.Yb(K.ab, M.a.domain), M.da && (a = new J.m(K.c, K.ia, K.r, M), K.Ua = a.cc(K.i, K.F))), K.cb = new J.N, Q = c), J.ib || K.sc();
-}, K._visitCode = function() {
-K._initData();
-var a = v(K.i.k(), l + K.c + ".", ";");
-return a = a.split("."), a[g] < 4 ? "" : a[1];
-}, K._cookiePathCopy = function(a) {
-K._initData(), K.i && K.i.Nc(K.c, a);
-}, K.sc = function() {
-var a = M.a[i].hash;
-a && 1 == a.indexOf("gaso=") ? a = v(a, "gaso=", j) : a = (a = M.e.name) && 0 <= a.indexOf("gaso=") ? v(a, "gaso=", j) : v(K.i.k(), s, ";"), a[g] >= 10 && (K.B = a, K.Fc()), J.ib = c;
-}, K.J = function() {
-return K._visitCode() % 1e4 < M.U * 100;
-}, K.Gc = function() {
-var a, b, e = M.a.links;
-M.lb || (a = M.a.domain, "www." == E(a, 0, 4) && (a = E(a, 4)), M.t.push("." + a));
-for (a = 0; a < e[g] && (M.ra == -1 || a < M.ra); a++) b = e[a], w(b.host) && (b.gatcOnclick || (b.gatcOnclick = b.onclick ? b.onclick : K.yc, b.onclick = function(a) {
-var b = !this.target || this.target == "_self" || this.target == "_top" || this.target == "_parent";
-return b = b && !K.Rb(a), K.Mc(a, this, b), b ? d : this.gatcOnclick ? this.gatcOnclick(a) : c;
-}));
-}, K.yc = function() {}, K._trackPageview = function(a) {
-p() && (K._initData(), M.t && K.Gc(), K.Lc(a), K.F = d);
-}, K._trackTrans = function() {
-var a = K.c, b = [], d, e, f;
-K._initData();
-if (K.f && K.J()) {
-for (d = 0; d < K.f.Y[g]; d++) {
-e = K.f.Y[d], A(b, e.Ca());
-for (f = 0; f < e.R[g]; f++) A(b, e.R[f].Ca());
-}
-for (d = 0; d < b[g]; d++) L.H(b[d], K.s, a, c);
-}
-}, K._setTrans = function() {
-var a = M.a, b, c, d;
-a = a.getElementById ? a.getElementById("utmtrans") : a.utmform && a.utmform.utmtrans ? a.utmform.utmtrans : e, K._initData();
-if (a && a.value) {
-K.f = new J.n, d = a.value.split("UTM:"), M.u = !M.u || "" == M.u ? "|" : M.u;
-for (a = 0; a < d[g]; a++) {
-d[a] = q(d[a]), b = d[a].split(M.u);
-for (c = 0; c < b[g]; c++) b[c] = q(b[c]);
-"T" == b[0] ? K._addTrans(b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8]) : "I" == b[0] && K._addItem(b[1], b[2], b[3], b[4], b[5], b[6]);
-}
-}
-}, K._addTrans = function(a, b, c, d, e, f, g, h) {
-return K.f = K.f ? K.f : new J.n, K.f.Ob(a, b, c, d, e, f, g, h);
-}, K._addItem = function(a, b, c, d, e, f) {
-var g;
-K.f = K.f ? K.f : new J.n, (g = K.f.hb(a)) || (g = K._addTrans(a, "", "", "", "", "", "", "")), g.Nb(b, c, d, e, f);
-}, K._setVar = function(a) {
-a && "" != a && k() && (K._initData(), R.Ec(x(a)), K.J() && L.H("&utmt=var", K.s, K.c));
-}, K._setCustomVar = function(a, b, c, d) {
-return K._initData(), R.Cc(a, b, c, d);
-}, K._deleteCustomVar = function(a) {
-K._initData(), R.Ub(a);
-}, K._getVisitorCustomVar = function(a) {
-return K._initData(), R.mc(a);
-}, K._setMaxCustomVariables = function(a) {
-M.ob = a;
-}, K._link = function(a, b) {
-M.z && a && (K._initData(), M.a[i].href = K._getLinkerUrl(a, b));
-}, K._linkByPost = function(a, b) {
-M.z && a && a.action && (K._initData(), a.action = K._getLinkerUrl(a.action, b));
-}, K._setXKey = function(a, b, c) {
-K.g._setKey(a, b, c);
-}, K._setXValue = function(a, b, c) {
-K.g._setValue(a, b, c);
-}, K._getXKey = function(a, b) {
-return K.g._getKey(a, b);
-}, K._getXValue = function(a, b) {
-return K.g.getValue(a, b);
-}, K._clearXKey = function(a) {
-K.g._clearKey(a);
-}, K._clearXValue = function(a) {
-K.g._clearValue(a);
-}, K._createXObj = function() {
-return K._initData(), new J.N;
-}, K._sendXEvent = function(a) {
-var b = "";
-K._initData(), K.J() && (b += "&utmt=event&utme=" + x(K.g.Ac(a)) + K.wa(), L.H(b, K.s, K.c, d, c));
-}, K._createEventTracker = function(a) {
-return K._initData(), new J.Jb(a, K);
-}, K._trackEvent = function(a, b, c, f) {
-var g = K.cb;
-return e != a && e != b && "" != a && "" != b ? (g._clearKey(5), g._clearValue(5), (a = g._setKey(5, 1, a) && g._setKey(5, 2, b) && (e == c || g._setKey(5, 3, c)) && (e == f || g._setValue(5, 1, f))) && K._sendXEvent(g)) : a = d, a;
-}, K.Mc = function(a, b, f) {
-K._initData();
-if (K.J()) {
-var g = new J.N;
-g._setKey(6, 1, b.href);
-var h = f ? function() {
-K.db(a, b);
-} : e;
-L.H("&utmt=event&utme=" + x(g.G()) + K.wa(), K.s, K.c, d, c, h);
-if (f) {
-var i = this;
-M.e.setTimeout(function() {
-i.db(a, b);
-}, 500);
-}
-}
-}, K.db = function(a, b) {
-a || (a = M.e.event);
-var d = c;
-b.gatcOnclick && (d = b.gatcOnclick(a));
-if (d || typeof d == "undefined") !b.target || b.target == "_self" ? M.e[i] = b.href : b.target == "_top" ? M.e.top.document[i] = b.href : b.target == "_parent" && (M.e.parent.document[i] = b.href);
-}, K.Rb = function(a) {
-a || (a = M.e.event);
-var b = a.shiftKey || a.ctrlKey || a.altKey;
-return b || a.modifiers && M.e.Event && (b = a.modifiers & M.e.Event.CONTROL_MASK || a.modifiers & M.e.Event.SHIFT_MASK || a.modifiers & M.e.Event.ALT_MASK), b;
-}, K.Pc = function() {
-return M;
-}, K._setDomainName = function(a) {
-M.b = a;
-}, K._addOrganic = function(a, b, c) {
-M.T.splice(c ? 0 : M.T.length, 0, new J.Ha(a, b));
-}, K._clearOrganic = function() {
-M.T = [];
-}, K._addIgnoredOrganic = function(a) {
-A(M.ta, a);
-}, K._clearIgnoredOrganic = function() {
-M.ta = [];
-}, K._addIgnoredRef = function(a) {
-A(M.va, a);
-}, K._clearIgnoredRef = function() {
-M.va = [];
-}, K._setAllowHash = function(a) {
-M.Ra = a ? 1 : 0;
-}, K._setCampaignTrack = function(a) {
-M.da = a ? 1 : 0;
-}, K._setClientInfo = function(a) {
-M.fa = a ? 1 : 0;
-}, K._getClientInfo = function() {
-return M.fa;
-}, K._setCookiePath = function(a) {
-M.h = a;
-}, K._setTransactionDelim = function(a) {
-M.u = a;
-}, K._setCookieTimeout = function(a) {
-K._setCampaignCookieTimeout(a * 1e3);
-}, K._setCampaignCookieTimeout = function(a) {
-M.Ta = a;
-}, K._setDetectFlash = function(a) {
-M.ha = a ? 1 : 0;
-}, K._getDetectFlash = function() {
-return M.ha;
-}, K._setDetectTitle = function(a) {
-M.ga = a ? 1 : 0;
-}, K._getDetectTitle = function() {
-return M.ga;
-}, K._setLocalGifPath = function(a) {
-M.oa = a;
-}, K._getLocalGifPath = function() {
-return M.oa;
-}, K._setLocalServerMode = function() {
-M.I = 0;
-}, K._setRemoteServerMode = function() {
-M.I = 1;
-}, K._setLocalRemoteServerMode = function() {
-M.I = 2;
-}, K._getServiceMode = function() {
-return M.I;
-}, K._setSampleRate = function(a) {
-M.U = a;
-}, K._setSessionTimeout = function(a) {
-K._setSessionCookieTimeout(a * 1e3);
-}, K._setSessionCookieTimeout = function(a) {
-M.sb = a;
-}, K._setAllowLinker = function(a) {
-M.z = a ? 1 : 0;
-}, K._setAllowAnchor = function(a) {
-M.ba = a ? 1 : 0;
-}, K._setCampNameKey = function(a) {
-M.Ia = a;
-}, K._setCampContentKey = function(a) {
-M.Ja = a;
-}, K._setCampIdKey = function(a) {
-M.Ka = a;
-}, K._setCampMediumKey = function(a) {
-M.La = a;
-}, K._setCampNOKey = function(a) {
-M.Ma = a;
-}, K._setCampSourceKey = function(a) {
-M.Na = a;
-}, K._setCampTermKey = function(a) {
-M.Oa = a;
-}, K._setCampCIdKey = function(a) {
-M.Pa = a;
-}, K._getAccount = function() {
-return K.s;
-}, K._setAccount = function(a) {
-K.s = a;
-}, K._setNamespace = function(a) {
-M.o = a ? x(a) : e;
-}, K._getVersion = function() {
-return f;
-}, K._setAutoTrackOutbound = function(a) {
-M.t = [], a && (M.t = a);
-}, K._setTrackOutboundSubdomains = function(a) {
-M.lb = a;
-}, K._setHrefExamineLimit = function(a) {
-M.ra = a;
-}, K._setReferrerOverride = function(a) {
-K.ab = a;
-}, K._setCookiePersistence = function(a) {
-K._setVisitorCookieTimeout(a);
-}, K._setVisitorCookieTimeout = function(a) {
-M.v = a;
-};
-}, J._getTracker = function(a, b) {
-return new J.aa(a, b);
-};
-var K = d, L = {
-ca: {},
-_createAsyncTracker: function(a, b) {
-return b = b || "", a = new J.aa(a), L.ca[b] = a, K = c, a;
-},
-_getAsyncTracker: function(a) {
-a = a || "";
-var b = L.ca[a];
-return b || (b = new J.aa, L.ca[a] = b, K = c), b;
-},
-push: function() {
-for (var a = arguments, b = 0, c = 0; c < a[g]; c++) try {
-if (typeof a[c] == "function") a[c](); else {
-var d = "", e = a[c][0], f = e.lastIndexOf(".");
-f > 0 && (d = E(e, 0, f), e = E(e, f + 1));
-var h = L._getAsyncTracker(d);
-h[e].apply(h, a[c].slice(1));
-}
-} catch (i) {
-b++;
-}
-return b;
-}
-};
-window[a] = J, M();
-})();
-
 // lib/services/WebService.js
 
 enyo.kind({
@@ -2110,15 +1247,6 @@ service: this.service,
 method: "updateAccountInfo"
 }), this.sendRequest(h, g);
 },
-getGoogleAnalyticsWebPropertyID: function(a) {
-var b = {
-appName: [ "APP_DISCO" ]
-};
-a = enyo.mixin(a ? a : {}, {
-service: this.service,
-method: "getPreferences"
-}), this.sendRequest(b, a);
-},
 notifyAuthenticationFailure: function(a) {
 var b = {};
 a = enyo.mixin(a ? a : {}, {
@@ -2459,38 +1587,6 @@ d.online === undefined || d.online === a ? b[c].callback(a) : this._waiting.push
 this._online && (this._MSMmodeActive = !1);
 }
 },
-getDataService: function() {
-findApps.DeviceProfile.getInstance().getCarrierIdentification({
-onSuccess: "ConnectOnCarrierInfo",
-onFailure: "ConnectOnCarrierFailure",
-scope: this
-});
-},
-ConnectOnCarrierInfo: function(a, b, c, d) {
-this.log("getCarrierIdentification", b);
-if (b.results[0] && b.results[0].mcc == 310 && b.results[0] && b.results[0].mnc == 410) {
-this.gotDataService = function(a, b, c) {
-b && (this.log("getDataService success response", b), undefined != b.returnValue ? b.returnValue || (this.isWanSvcConnected = !1, this.ipAddress = null) : b.status && ("connected" === b.status && b.ipAddress ? (this.isWanSvcConnected = !0, this.ipAddress = b.ipAddress) : "retrying" === b.status ? (this.isWanSvcConnected = !1, this.ipAddress = null) : "disconnected" === b.status && (this.isWanSvcConnected = !1, this.ipAddress = null)));
-}, this.gotDataServiceError = function(a, b, c) {
-this.error("Error getting proxy service", b), this.isWanSvcConnected = !1, this.ipAddress = null;
-};
-var e = {
-method: "connectCellularDataService",
-onSuccess: "gotDataService",
-onFailure: "gotDataServiceError"
-}, f = {
-service: "proxy",
-subscribe: !0
-};
-this.cellSvcConnectRequest = this.$.connMan.call(f, e);
-}
-},
-ConnectOnCarrierFailure: function(a, b, c, d) {
-this.error("No MCC/MNC: Either device is only wifi device or no wan connection available "), this.isWanSvcConnected = !1, this.ipAddress = null;
-},
-disconnectDataService: function() {
-this.cellSvcConnectRequest ? (this.cellSvcConnectRequest.cancel(), this.cellSvcConnectRequest = null) : this.log("wanDisconnectServiceRequest already disconnected");
-},
 monitor: function() {
 this._started || this._startup();
 },
@@ -2504,7 +1600,7 @@ return this._1x;
 },
 cleanup: function() {},
 destroy: function() {
-this.disconnectDataService(), this.inherited(arguments);
+this.inherited(arguments);
 }
 });
 
@@ -5279,7 +4375,7 @@ flex: 1,
 onAcquirePage: "acquireListPage"
 } ],
 create: function() {
-this.inherited(arguments), this.appMetrics = enyo.application.appMetrics;
+this.inherited(arguments);
 },
 setAppFilter: function() {
 var a = findApps.UserSession.getSession();
@@ -5321,7 +4417,7 @@ value: this.topCategory.categoryId
 }), this.$.sub_categories.items && this.$.sub_categories.items.length > 0 && this.$.sub_categories.setValue(this.$.sub_categories.items[0].value), this.$.sub_categories.setItems(a), !this.selectedSubCategory || this.selectedSubCategory == null ? this.$.sub_categories.setValue(this.topCategory.categoryId) : this.$.sub_categories.setValue(this.selectedSubCategory), this.$.sub_categories.setHideArrow(!1), this.$.sub_categories.disabled = !1, this.$.sub_categories.addClass("showIcon"), this.$.sub_categories.addStyles("background: url(" + b + ") 4px no-repeat;")), this.$.sub_categories.render();
 },
 subCategorySelected: function(a, b, c) {
-this.totalAppsCount = 0, this.selectedSubCategory = b, this.appMetrics && this.appMetrics.trackEvent("subcategory/" + b), this.getApps({
+this.totalAppsCount = 0, this.selectedSubCategory = b, this.getApps({
 categoryid: b,
 qid: this.storedQuery.queryId,
 queryFragment: this.storedQuery.queryFragment,
@@ -5885,7 +4981,7 @@ kind: "findApps.SaveButton",
 showing: !1
 } ],
 create: function() {
-this.inherited(arguments), this.appMetrics = enyo.application.appMetrics, this.firstLaunch = !0, this.registered = !1;
+this.inherited(arguments), this.firstLaunch = !0, this.registered = !1;
 },
 constructed: function() {
 this.inherited(arguments), typeof HACKS != "undefined" && HACKS.HACK_ENYO_DEFAULT_GUI_EVENT_HANDLER(this);
@@ -5898,8 +4994,8 @@ updateApps: function(a, b) {
 var c = b || this._selectedCatIndex, d = findApps.UserSession.getSession();
 if (d != null) {
 var e = d.categories[c], f = e.id;
-f == 0 ? (this.storedQueries = d.queryButtons.HOME, this.storedQueriesType = "HOME", this.$.apps.setStoredQuery(this.getQueryByButtonIndex()), this.appMetrics && this.appMetrics.trackNewScene("categories/home"), this.$.stored_query_1.setCaption($L("Recommended"))) : (this.storedQueries = d.queryButtons.DEFAULT, this.storedQueriesType = "DEFAULT", this.$.apps.setStoredQuery(this.getQueryByButtonIndex()), this.appMetrics && this.appMetrics.trackNewScene("categories/" + e.label), this.$.stored_query_1.setCaption($L("Recommended"))), this.$.apps.setTopCategory(e), this.$.apps.refresh(), this.$.categories.setCurrentSelectRowIndex(c), this.$.apps.renderSubCategories();
-} else this.storedQueries = d.queryButtons.DEFAULT, this.storedQueriesType = "DEFAULT", this.$.apps.setStoredQuery(this.getQueryByButtonIndex()), this.appMetrics && this.appMetrics.trackNewScene("categories/" + e.label), this.$.stored_query_1.setCaption($L("Recommended"));
+f == 0 ? (this.storedQueries = d.queryButtons.HOME, this.storedQueriesType = "HOME", this.$.apps.setStoredQuery(this.getQueryByButtonIndex()), this.$.stored_query_1.setCaption($L("Recommended"))) : (this.storedQueries = d.queryButtons.DEFAULT, this.storedQueriesType = "DEFAULT", this.$.apps.setStoredQuery(this.getQueryByButtonIndex()), this.$.stored_query_1.setCaption($L("Recommended"))), this.$.apps.setTopCategory(e), this.$.apps.refresh(), this.$.categories.setCurrentSelectRowIndex(c), this.$.apps.renderSubCategories();
+} else this.storedQueries = d.queryButtons.DEFAULT, this.storedQueriesType = "DEFAULT", this.$.apps.setStoredQuery(this.getQueryByButtonIndex()), this.$.stored_query_1.setCaption($L("Recommended"));
 this.$.apps.setTopCategory(e), this.$.apps.refresh(), this.$.categories.setCurrentSelectRowIndex(c), this.$.apps.renderSubCategories();
 },
 receiveResponse: function(a, b, c) {
@@ -5937,7 +5033,7 @@ this.updateApps();
 },
 storedQuerySelected: function(a) {
 var b = this.getQueryByButtonIndex();
-this.$.apps.setStoredQuery(b), this.$.apps.refresh(!0), this.appMetrics && this.appMetrics.trackEvent("stored_query/storedQuerySelected");
+this.$.apps.setStoredQuery(b), this.$.apps.refresh(!0);
 },
 handleGetAppsError: function(a, b) {
 this.hideScrim(), b.push("LOC06008"), this.displayError(b);
@@ -9080,7 +8176,7 @@ onSuccess: "accountInfoSuccess",
 onFailure: "accountInfoFailure",
 scope: this
 });
-b && this.accountInfoSuccess(null, b), this.appdownloadmgr = enyo.application.appdownloadManager, this.appMetrics = enyo.application.appMetrics;
+b && this.accountInfoSuccess(null, b), this.appdownloadmgr = enyo.application.appdownloadManager;
 },
 initReviewListData: function(a, b, c) {
 a === "positive" ? this.$.positiveReviewList.setReviewListInfo({
@@ -9212,10 +8308,10 @@ appName: this._appDetails.title
 d.setParams(c);
 },
 linkToDeveloperSite: function() {
-this._appDetails.publicApplicationId && this._appDetails.homeURL && (this.appMetrics && this.appMetrics.trackEvent("linkToDeveloperSite/" + this._appDetails.publicApplicationId + "?url=" + this._appDetails.homeURL), findApps.ApplicationManager.getInstance().openBrowserPage(this._appDetails.homeURL, "browserPageOpenSuccess", "browserPageOpenFailure", this));
+this._appDetails.publicApplicationId && this._appDetails.homeURL && (findApps.ApplicationManager.getInstance().openBrowserPage(this._appDetails.homeURL, "browserPageOpenSuccess", "browserPageOpenFailure", this));
 },
 linkToSupport: function() {
-this.appMetrics && this.appMetrics.trackEvent("linkToSupport/" + this._appDetails.publicApplicationId + "?url=" + this._appDetails.supportURL), findApps.ApplicationManager.getInstance().openBrowserPage(this._appDetails.supportURL, "browserPageOpenSuccess", "browserPageOpenFailure", this);
+findApps.ApplicationManager.getInstance().openBrowserPage(this._appDetails.supportURL, "browserPageOpenSuccess", "browserPageOpenFailure", this);
 },
 browserPageOpenSuccess: function() {},
 browserPageOpenFailure: function() {},
@@ -10449,7 +9545,7 @@ onclick: "openPopup",
 name: "reportProblemButton"
 } ],
 create: function() {
-this.inherited(arguments), this.appMetrics = enyo.application.appMetrics;
+this.inherited(arguments);
 var a = findApps.AccountServices.getInstance().getAccountInfo({
 onSuccess: "accountInfoSuccess",
 onFailure: "accountInfoFailure",
@@ -10474,10 +9570,10 @@ scope: this
 });
 },
 closePopup: function() {
-this.appMetrics && this.appMetrics.trackNewScene("report_a_problem_closed/" + this.appDetails.publicApplicationId), this.$.reportAProblemPopup.close();
+this.$.reportAProblemPopup.close();
 },
 openPopup: function() {
-this.appMetrics && this.appMetrics.trackNewScene("report_a_problem/" + this.appDetails.publicApplicationId), this.$.reportAProblemPopup.openAtCenter();
+this.$.reportAProblemPopup.openAtCenter();
 },
 accountInfoSuccess: function(a, b) {
 findApps.UserSession.getAccountInfo() == null && findApps.UserSession.setAccountInfo(b), this.name = b.firstName + " " + b.lastName;
@@ -10486,10 +9582,10 @@ accountInfoFailure: function(a, b) {
 this.error("ReportProblem : Could not fetch first name / last name. getAccountInfo failure. ", b), this.name = "";
 },
 handleServerResponse: function(a, b, c, d) {
-this.$.sendReportButton.disabled = !1, this.$.sendReportButton.removeClass("enyo-button-disabled"), this.closePopup(), this.appMetrics && this.appMetrics.trackNewScene("report_a_problem_submitted/" + this.appDetails.publicApplicationId);
+this.$.sendReportButton.disabled = !1, this.$.sendReportButton.removeClass("enyo-button-disabled"), this.closePopup();
 },
 handleServerError: function(a, b, c, d, e) {
-this.$.sendReportButton.disabled = !1, this.$.sendReportButton.removeClass("enyo-button-disabled"), this.appMetrics && this.appMetrics.trackNewScene("report_a_problem_failed/" + this.appDetails.publicApplicationId), this.closePopup(), e.push("LOC07100"), this.displayError(e);
+this.$.sendReportButton.disabled = !1, this.$.sendReportButton.removeClass("enyo-button-disabled"), this.closePopup(), e.push("LOC07100"), this.displayError(e);
 },
 displayError: function(a) {
 findApps.ViewLibrary._container.isTopView(this.owner.owner) && this.$.error.displayError(a);
@@ -15150,7 +14246,7 @@ var a = this;
 setTimeout(function() {
 enyo.application.sessionManager.triggerInitSession(a);
 }, 10), setTimeout(function() {
-enyo.application.appdownloadManager.init(), enyo.application.appdownloadManager.myAppsListIsReady() ? a.updateMyApps(null, enyo.application.appdownloadManager.MYAPPS_ALL) : enyo.application.appdownloadManager.attach(a), a.initGoogleAppMetrics(), enyo.application.connectionManager.getDataService(), a.$.appLists || a.createComponent({
+enyo.application.appdownloadManager.init(), enyo.application.appdownloadManager.myAppsListIsReady() ? a.updateMyApps(null, enyo.application.appdownloadManager.MYAPPS_ALL) : enyo.application.appdownloadManager.attach(a), a.$.appLists || a.createComponent({
 name: "appLists",
 kind: "findApps.AppLists",
 owner: a
@@ -15179,25 +14275,6 @@ onCancel: "cancelError"
 receiveResponse: function(a, b, c) {
 a === "userSession" && (enyo.application.sessionManager.removeListener(this, "userSession"), b || (c.push("LOC03004"), this.displayError(c))), enyo.windows.activate("", "main");
 },
-initGoogleAppMetrics: function() {
-enyo.application.onDevice ? findApps.AccountServices.getInstance().getGoogleAnalyticsWebPropertyID({
-onSuccess: "gotGooglePropertyId",
-onFailure: "errorGooglePropertyId",
-scope: this
-}) : this.gotGooglePropertyId(null, null);
-},
-gotGooglePropertyId: function(a, b) {
-var c;
-if (AppCatalog.Config.DummyConfig) c = AppCatalog.Config.DummyConfig._googlePropertyId; else if (b.parameterInfos) for (var d = 0; d < b.parameterInfos.length; d++) if (b.parameterInfos[d]["key"] == "GOOGLE_ANALYTICS_WPID") {
-c = b.parameterInfos[d].value;
-break;
-}
-var e = new AppMetrics(c);
-e.setInternetConnection(enyo.application.connectionManager.isOnline()), e.trackLaunch(enyo.fetchAppInfo().version), e.trackRegistration(enyo.fetchAppInfo().version), enyo.application.appMetrics = e;
-},
-errorGooglePropertyId: function(a, b) {
-this.error("Error when fetching google Property ID: ", b);
-},
 setView: function(a) {
 this.$.pane.selectViewByName(a);
 var b = this.$[a + "_content"] || this.$[a];
@@ -15223,7 +14300,7 @@ prefetchViews: function(a) {
 if (a) for (var b in a) this.hiddenLoadView(a[b]);
 },
 goBack: function(a, b) {
-(!findApps.UserSession._session || findApps.UserSession._session == null) && enyo.application.sessionManager.triggerInitSession(this), enyo.application.appMetrics || this.initGoogleAppMetrics();
+(!findApps.UserSession._session || findApps.UserSession._session == null) && enyo.application.sessionManager.triggerInitSession(this);
 if (this.$.pane.getViewIndex() > 0) {
 var c = !0;
 while (c) {

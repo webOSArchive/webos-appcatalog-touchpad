@@ -141,10 +141,8 @@ enyo.kind({
                     enyo.application.appdownloadManager.attach(self);
                 }
                 // Get the google property id for tracking
-                self.initGoogleAppMetrics();
 		        
                 // Get the data service
-                enyo.application.connectionManager.getDataService();
                 // TODO: Check with Mamta why we need applists component. If we really need it, there are no observers right now
                 // If to be kept, may be we can move this inside appdownloadmgr itself
                 if (!self.$.appLists) {
@@ -217,43 +215,6 @@ enyo.kind({
         }
         enyo.windows.activate("","main");
     },
-    // Google Analytics
-    initGoogleAppMetrics: function() {
-        // Get google analytics ID
-        if (enyo.application.onDevice) {
-        	findApps.AccountServices.getInstance().getGoogleAnalyticsWebPropertyID({
-                onSuccess: "gotGooglePropertyId", 
-                onFailure: "errorGooglePropertyId", 
-                scope: this
-            });
-        } else {
-            this.gotGooglePropertyId(null, null);
-        }
-    },
-    gotGooglePropertyId: function(inSender, inResponse) {
-        var propertyID;
-        if (AppCatalog.Config.DummyConfig) {
-            propertyID = AppCatalog.Config.DummyConfig._googlePropertyId; // using a dummy value
-        } else {
-            if (inResponse.parameterInfos) {
-                // looking for the right setting
-                for (var i = 0; i < inResponse.parameterInfos.length; i++) {
-                    if (inResponse.parameterInfos[i]["key"] == "GOOGLE_ANALYTICS_WPID") {
-                        propertyID = inResponse.parameterInfos[i]["value"];
-                        break;
-                    }
-                }
-            }
-        }
-        var appMetrics = new AppMetrics(propertyID);
-        appMetrics.setInternetConnection(enyo.application.connectionManager.isOnline());
-        appMetrics.trackLaunch(enyo.fetchAppInfo().version);
-        appMetrics.trackRegistration(enyo.fetchAppInfo().version);
-        enyo.application.appMetrics = appMetrics;
-    },
-    errorGooglePropertyId: function(inSender, inResponse) {
-        this.error("Error when fetching google Property ID: ", inResponse);
-    },
     // View related methods (adding a view / going back)
     setView: function(name) {
         this.$.pane.selectViewByName(name);
@@ -297,10 +258,6 @@ enyo.kind({
         // Check if user/session is available
         if(!findApps.UserSession._session || findApps.UserSession._session == null) {
             enyo.application.sessionManager.triggerInitSession(this);
-        }
-        // Check that the google appmetrics is initialized
-        if(!enyo.application.appMetrics) {
-            this.initGoogleAppMetrics();
         }
         if (this.$.pane.getViewIndex() > 0) {
             var flag = true;

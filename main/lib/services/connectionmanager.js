@@ -93,70 +93,6 @@ enyo.kind({
             }
         }
     },
-    getDataService: function() {
-        findApps.DeviceProfile.getInstance().getCarrierIdentification({
-            onSuccess: "ConnectOnCarrierInfo", 
-            onFailure: "ConnectOnCarrierFailure", 
-            scope: this
-        });
-    },
-    ConnectOnCarrierInfo: function(inSender, inResponse, inRequest, inProps) {
-        this.log("getCarrierIdentification", inResponse);
-        if (inResponse.results[0] && inResponse.results[0].mcc == 310 && inResponse.results[0] && inResponse.results[0].mnc == 410) {
-            this.gotDataService = function(inSender, results, inRequest) {
-                if (results) {
-                    this.log("getDataService success response", results);
-                    if (undefined != results.returnValue) { //first response will have returnValue the rest don't unless wand goes away
-                        if (!results.returnValue) {
-                            this.isWanSvcConnected = false;
-                            this.ipAddress = null;
-                        }
-                    } else {
-                        if (results.status) {
-                            if ("connected" === results.status && results.ipAddress) {
-                                this.isWanSvcConnected = true;
-                                this.ipAddress = results.ipAddress;
-                            } else if ("retrying" === results.status) {
-                                this.isWanSvcConnected = false;
-                                this.ipAddress = null;
-                            } else if ("disconnected" === results.status) {
-                                this.isWanSvcConnected = false;
-                                this.ipAddress = null;
-                            }
-                        }
-                    }
-                }
-            };
-            this.gotDataServiceError = function(inSender, inResponse, inRequest) {
-                this.error("Error getting proxy service", inResponse);
-                this.isWanSvcConnected = false;
-                this.ipAddress = null;
-            }
-            var inPropsConnectDS = {
-                method: "connectCellularDataService",
-                onSuccess: "gotDataService",
-                onFailure: "gotDataServiceError"
-            }
-            var inParams = {
-                service: "proxy",
-                subscribe: true
-            }
-            this.cellSvcConnectRequest = this.$.connMan.call(inParams, inPropsConnectDS);
-        }
-    },
-    ConnectOnCarrierFailure: function(inSender, inResponse, inRequest, inProps) {
-        this.error("No MCC/MNC: Either device is only wifi device or no wan connection available ");
-        this.isWanSvcConnected = false;
-		this.ipAddress = null;
-    },
-    disconnectDataService: function() {
-        if (this.cellSvcConnectRequest) {
-            this.cellSvcConnectRequest.cancel();
-            this.cellSvcConnectRequest = null;
-        } else {
-            this.log("wanDisconnectServiceRequest already disconnected");
-        }
-    },
     /*
 	 * Enable monitoring of network status.
 	 */
@@ -181,7 +117,6 @@ enyo.kind({
     },
     cleanup: function() {},
     destroy: function() {
-        this.disconnectDataService();
         this.inherited(arguments);
     }
 });

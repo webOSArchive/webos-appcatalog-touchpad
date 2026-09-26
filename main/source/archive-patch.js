@@ -218,7 +218,6 @@
         _email:               "archive@webosarchive.org",
         _deviceId:            "touchpad-archive",
         _softwareBuildBranch: "open",
-        _googlePropertyId:    "",
         _carrier:             {_mcc: "310", _mnc: "410", _shortName: "archive"}
     };
 

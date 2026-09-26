@@ -33,6 +33,11 @@ Two catalog quirks the install path needed:
 - The appInstallService refuses an install with any empty string or without an `authToken` ("Bad parameter"); the catalog's session comes from `DummyConfig`, so its values fill in.
 - A list row is found by its app's id to be redrawn, and fetching an app's details changes that id from the catalog's number to the package id, so a row stayed at "Downloading..." after the app had installed. Rows are now also matched by their `AppDownload`.
 
+## Removed (6.2.2925)
+
+- **Google Analytics.** HP's catalog shipped Google's `ga.js` and tracked launches, scenes and taps against a property ID it fetched from HP's own servers. That lookup now always fails, and it was retried every time the catalog came to the front. The library, the tracker, the lookup (`getGoogleAnalyticsWebPropertyID`) and every tracking call are gone, from `main/build.js` (the bundle the app runs) and from the sources in `main/lib` and `main/source` alike.
+- **The carrier data connection.** On a device reporting AT&T's network codes (the catalog's own dummy session does), it asked the connection manager for a cellular "proxy" connection, used only by HP's payment server; on every device today that fails ("APN Not found in CarrierDB"). `getDataService` and its callbacks are gone the same way.
+
 ## Self-update
 
 The app checks `http://appcatalog.webosarchive.org/appcatalog-touchpad.json` (a static manifest at the domain root, served over plain HTTP so it works on a freshly-Doctored device before Preware/the community OTA are installed) a few seconds after launch, compares `version` against its own `appinfo.json` version, and prompts to install through the `.ipk` handler (above) if the manifest is newer - not directly, so the catalog never replaces itself while it runs. See `main/source/archive-patch.js`.

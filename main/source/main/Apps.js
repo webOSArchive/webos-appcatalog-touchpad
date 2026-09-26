@@ -48,7 +48,6 @@ enyo.kind({
     }],
     create: function() {
         this.inherited(arguments);
-        this.appMetrics = enyo.application.appMetrics;
     },
     
     setAppFilter: function() {
@@ -153,7 +152,6 @@ enyo.kind({
     subCategorySelected: function(inSender, inValue, inOldValue) {
         this.totalAppsCount = 0;
         this.selectedSubCategory = inValue;
-        if (this.appMetrics) this.appMetrics.trackEvent("subcategory/" + inValue);
         this.getApps({
             categoryid: inValue,
             qid: this.storedQuery.queryId,

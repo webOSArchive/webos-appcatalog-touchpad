@@ -320,7 +320,6 @@ enyo.kind({
             this.accountInfoSuccess(null, accntInfo);
         }
         this.appdownloadmgr = enyo.application.appdownloadManager;
-        this.appMetrics = enyo.application.appMetrics;
     },
     initReviewListData: function(sign, reviewCount, reviews) {
         if (sign === "positive") {
@@ -632,12 +631,10 @@ enyo.kind({
     },
     linkToDeveloperSite: function() {
         if(this._appDetails.publicApplicationId && this._appDetails.homeURL) {
-            if (this.appMetrics) this.appMetrics.trackEvent("linkToDeveloperSite/" + this._appDetails.publicApplicationId + "?url=" + this._appDetails.homeURL);
             findApps.ApplicationManager.getInstance().openBrowserPage(this._appDetails.homeURL, "browserPageOpenSuccess", "browserPageOpenFailure", this);
         }
     },
     linkToSupport: function() {
-        if (this.appMetrics) this.appMetrics.trackEvent("linkToSupport/" + this._appDetails.publicApplicationId + "?url=" + this._appDetails.supportURL);
         findApps.ApplicationManager.getInstance().openBrowserPage(this._appDetails.supportURL, "browserPageOpenSuccess", "browserPageOpenFailure", this);
     },
     browserPageOpenSuccess: function() {

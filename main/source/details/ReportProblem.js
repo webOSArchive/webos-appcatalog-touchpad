@@ -126,7 +126,6 @@ enyo.kind({
 
     create: function() {
         this.inherited(arguments);
-        this.appMetrics = enyo.application.appMetrics;
         var accntInfo = findApps.AccountServices.getInstance().getAccountInfo({
             onSuccess: "accountInfoSuccess", 
             onFailure: "accountInfoFailure", 
@@ -166,12 +165,10 @@ enyo.kind({
         });
     },
     closePopup: function() {
-        if (this.appMetrics) this.appMetrics.trackNewScene("report_a_problem_closed/" + this.appDetails.publicApplicationId);
         this.$.reportAProblemPopup.close();
     },
     // Open Report a Problem as a pop-up
     openPopup: function() {
-        if (this.appMetrics) this.appMetrics.trackNewScene("report_a_problem/" + this.appDetails.publicApplicationId);
         this.$.reportAProblemPopup.openAtCenter();
     },
     // Server callback
@@ -188,12 +185,10 @@ enyo.kind({
         this.$.sendReportButton.disabled = false;
         this.$.sendReportButton.removeClass('enyo-button-disabled');
         this.closePopup();
-        if (this.appMetrics) this.appMetrics.trackNewScene("report_a_problem_submitted/" + this.appDetails.publicApplicationId);
     },
     handleServerError: function(inSender, inResponse, inRequest, props, errors) {
         this.$.sendReportButton.disabled = false;
         this.$.sendReportButton.removeClass('enyo-button-disabled');
-        if (this.appMetrics) this.appMetrics.trackNewScene("report_a_problem_failed/" + this.appDetails.publicApplicationId);
         this.closePopup();
         errors.push("LOC07100");
         this.displayError(errors);

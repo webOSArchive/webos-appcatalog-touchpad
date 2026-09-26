@@ -8,12 +8,14 @@
  * stock installer would install it without running them, and only Preware's root helper ran
  * those.
  *
- *   DirectInstall.run(params, report, onScripts)
+ *   DirectInstall.run(params, report, onScripts, onError)
  *     params: appInstallService's install parameters (id, version, ipkUrl, ...)
  *     report(state, progress, extra): appInstallService's states - "ipk download current",
  *       "ipk download complete", "installing", "installed", "download failed" and
  *       "install failed" (with extra.reason, the installer's FAILED_... status)
  *     onScripts(list): the package has install scripts (list), or couldn't be read (null)
+ *     onError(e): something threw in one of the install's callbacks (optional); the install
+ *       stops there and reports nothing more
  *
  * No framework of its own, so a probe app can run it as it is (Workbench/probe in Lunacy).
  */
@@ -57,9 +59,26 @@ var DirectInstall = (function () {
         xhr.send();
     }
 
-    function run(params, report, onScripts) {
-        var ticket = null, lastPct = -1;
+    function run(params, report, onScripts, onError) {
+        var ticket = null, lastPct = -1, broken = false;
         console.log("DIRECT-INSTALL installing " + params.id + " from " + params.ipkUrl);
+
+        // The bus and XHR callbacks run outside any caller's try, so each is wrapped here.
+        function guard(fn) {
+            return function () {
+                if (broken) { return; }
+                try {
+                    return fn.apply(this, arguments);
+                } catch (e) {
+                    broken = true;
+                    console.log("DIRECT-INSTALL " + params.id + " failed: " + e);
+                    // A bus callback's second argument closes its subscription.
+                    if (typeof arguments[1] === "function") { try { arguments[1](); } catch (e2) {} }
+                    try { forget(); } catch (e3) {}
+                    if (onError) { onError(e); }
+                }
+            };
+        }
 
         function forget() {
             if (ticket !== null) {
@@ -70,7 +89,7 @@ var DirectInstall = (function () {
         report("ipk download current", 0);
         lunaCall("palm://com.palm.downloadmanager/download", {
             target: params.ipkUrl, targetDir: DOWNLOAD_DIR, subscribe: true
-        }, function (r, stop) {
+        }, guard(function (r, stop) {
             if (r.returnValue === false) {
                 stop();
                 report("download failed", 0, {errorCode: -5, reason: "Http error"});
@@ -95,24 +114,24 @@ var DirectInstall = (function () {
                 }
                 var path = r.target || ((r.destPath || "") + (r.destFile || ""));
                 report("ipk download complete", 100);
-                readScripts(path, function (scripts) {
+                readScripts(path, guard(function (scripts) {
                     if (scripts === null || scripts.length) {
                         forget();
                         onScripts(scripts);
                         return;
                     }
-                    installFile(path, report, forget, params);
-                });
+                    installFile(path, report, forget, params, guard);
+                }));
             }
-        }, true);
+        }), true);
     }
 
     // com.palm.appinstaller/installNoVerify, measured on the reference TouchPad as App Catalog:
     // {returnValue, ticket, subscribed}, then status STARTING, CREATE_TMP, VERIFYING,
     // IPKG_INSTALL and SUCCESS (or a FAILED_… status).
-    function installFile(path, report, forget, params) {
+    function installFile(path, report, forget, params, guard) {
         report("installing", 0);
-        lunaCall("palm://com.palm.appinstaller/installNoVerify", {target: path, subscribe: true}, function (r, stop) {
+        lunaCall("palm://com.palm.appinstaller/installNoVerify", {target: path, subscribe: true}, guard(function (r, stop) {
             if (r.returnValue === false) {
                 stop(); forget();
                 report("install failed", 0, {reason: r.errorText || "FAILED_IPKG_INSTALL"});
@@ -125,7 +144,7 @@ var DirectInstall = (function () {
                 stop(); forget();
                 report("install failed", 0, {reason: r.status});
             }
-        }, true);
+        }), true);
     }
 
     return { run: run };

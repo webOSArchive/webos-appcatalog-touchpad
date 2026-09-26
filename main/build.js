@@ -3061,7 +3061,7 @@ return "findApps.AppState.Download";
 name: "findApps.AppState.Downloading",
 kind: enyo.Control,
 init: function(a, b) {
-a._progressPillModel.state = "downloading", a._progressPillModel.titleRight = undefined, a._progressPillModel.icon = "images/download-indicator-pause.png", a._progressPillModel.image = "images/download-indicator-pause.png", a._progressPillModel.title = $L("Downloading..."), a.enableSave = !1, a._progressPillModel.value = a.progress / 100, a.disabledClass = null, a.updateClass = null, a.activeClass = "active", a.resumeClass = null, a.pauseClass = "show", a.warningClass = null;
+a._progressPillModel.state = "downloading", a._progressPillModel.titleRight = undefined, a._progressPillModel.icon = undefined, a._progressPillModel.image = undefined, a._progressPillModel.title = $L("Downloading..."), a.enableSave = !1, a._progressPillModel.value = a.progress / 100, a.disabledClass = null, a.updateClass = null, a.activeClass = "active", a.resumeClass = null, a.pauseClass = null, a.warningClass = null;
 },
 updateFromServer: function(a) {
 a.setState("findApps.AppState.Downloading");
@@ -3069,15 +3069,8 @@ a.setState("findApps.AppState.Downloading");
 updateFromInstalledAppsList: function(a) {
 a.setState("findApps.AppState.Downloading");
 },
-defaultAction: function(a) {
-this.pauseDownload(a);
-},
-myAppsDefaultAction: function(a) {
-this.pauseDownload(a);
-},
-pauseDownload: function(a) {
-this.owner.$.downloadStateManager._pause(a);
-},
+defaultAction: function(a) {},
+myAppsDefaultAction: function(a) {},
 cancelDownload: function(a) {
 this.owner.$.downloadStateManager._cancel(a);
 },

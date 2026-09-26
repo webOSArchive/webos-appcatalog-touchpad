@@ -383,8 +383,9 @@ enyo.kind({
     init: function(app, args) {
         app._progressPillModel.state = "downloading";
         app._progressPillModel.titleRight = undefined;
-        app._progressPillModel.icon = 'images/download-indicator-pause.png';
-        app._progressPillModel.image = 'images/download-indicator-pause.png';
+        // No pause: a paused install couldn't be resumed, so the bar has no button.
+        app._progressPillModel.icon = undefined;
+        app._progressPillModel.image = undefined;
         app._progressPillModel.title = $L('Downloading...');
         app.enableSave = false;
         app._progressPillModel.value = app.progress / 100;
@@ -392,7 +393,7 @@ enyo.kind({
         app.updateClass = null;
         app.activeClass = "active";
         app.resumeClass = null;
-        app.pauseClass = "show";
+        app.pauseClass = null;
         app.warningClass = null;
     },
     updateFromServer: function(app) {
@@ -403,14 +404,10 @@ enyo.kind({
         // force a refresh
         app.setState("findApps.AppState.Downloading");
     },
+    // Tapping the bar paused the download; there is no pause now.
     defaultAction: function(app) {
-        this.pauseDownload(app);
     },
     myAppsDefaultAction: function(app) {
-        this.pauseDownload(app);
-    },
-    pauseDownload: function(app) {
-        this.owner.$.downloadStateManager._pause(app);
     },
     cancelDownload: function(app) {
         this.owner.$.downloadStateManager._cancel(app);

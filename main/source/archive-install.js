@@ -12,7 +12,8 @@
  *              com.palm.appinstaller/installNoVerify (open to a com.palm.* app) installs it,
  *              reporting to the same progress pill as the appInstallService would have. The
  *              stock installer runs no install scripts, so a package that has any
- *              (IpkInspect) is handed to the .ipk handler instead - Preware, Preware 2.
+ *              (IpkInspect) is handed to the .ipk handler instead - Preware, Preware 2 -
+ *              and so is any package whose direct install fails or throws, at any step.
  *              The catalog never registers as an .ipk handler itself.
  *   other   -- LuneOS, or anywhere the above aren't there: the .ipk handler.
  *
@@ -185,16 +186,48 @@
         };
     }
 
+    // Anything that goes wrong here - a throw, now or in a later callback, or a download or
+    // install that fails - hands the package to the .ipk handler instead, once.
     function installDirectly(adm, app) {
-        var params = installParams(app);
-        DirectInstall.run(params, reporter(adm, params), function (scripts) {
-            // Only Preware's root helper runs install scripts.
-            console.log("ARCHIVE-INSTALL " + params.id + " has install scripts (" + scripts + "): handing it to the .ipk handler");
-            installWithHandler(app, params.ipkUrl);
-        });
+        var handedOff = false;
+        function handOff(why) {
+            if (handedOff) { return; }
+            handedOff = true;
+            console.log("ARCHIVE-INSTALL direct install of " + app.publicApplicationId + " gave up (" + why + "): handing it to the .ipk handler");
+            installWithHandler(app, app.packageUrl);
+        }
+        try {
+            var params = installParams(app);
+            var report = reporter(adm, params);
+            DirectInstall.run(params, function (state, progress, extra) {
+                if (handedOff) { return; }
+                if (state === "download failed" || state === "install failed") {
+                    handOff(state + (extra && extra.reason ? ", " + extra.reason : ""));
+                    return;
+                }
+                report(state, progress, extra);
+            }, function (scripts) {
+                // Only Preware's root helper runs install scripts.
+                handOff(scripts ? "install scripts: " + scripts : "package couldn't be read");
+            }, function (e) {
+                handOff(String(e));
+            });
+        } catch (e) {
+            handOff(String(e));
+        }
     }
 
     // ---- the catalog's install ----
+
+    // The AppDownloadManager that follows installs (_appInstallServiceStatusCB). The service
+    // installing is DownloadStateManager's own, whose owner is the state manager, so the
+    // download manager is further up; the one the window made is the fallback.
+    function downloadManager(service) {
+        for (var o = service.owner; o; o = o.owner) {
+            if (typeof o._appInstallServiceStatusCB === "function") { return o; }
+        }
+        return enyo.application.appdownloadManager;
+    }
 
     // Every caller installs through AppInstallService.install: DownloadStateManager._install
     // (the normal Get flow) and AppState.InstallFailed's retry.
@@ -206,7 +239,7 @@
             this.subscribe = false;
             this.call(installParams(app), {method: "install", onSuccess: successCb, onFailure: failureCb});
         } else if (platform === "webos") {
-            installDirectly(this.owner, app);
+            installDirectly(downloadManager(this), app);
         } else {
             installWithHandler(app, ipkUrl);
         }

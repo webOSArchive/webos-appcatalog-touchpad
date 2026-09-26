@@ -18,6 +18,21 @@ The magazine **engine** (`Magazine`, `MagazinePage`, `BindableLayout`, etc., und
 
 Full editions are authored independently in [webOSArchive/PivotMagazine-WOSA](https://github.com/webOSArchive/PivotMagazine-WOSA) (no longer a submodule of this repo, sibling directory to this one) and published as static files to `catalog-service`'s `pivot/{lang}/` via `PivotMagazine-WOSA/Tools/gen-device-manifest.py` — see that repo's `CLAUDE.md` for the full publish workflow, including a couple of non-obvious gotchas (the generator never deletes stale files, and `--version` must be bumped every time or devices silently never see the update).
 
+## Installing apps (6.2)
+
+HP's catalog installed through `com.palm.appInstallService` and followed each install through its `status` subscription, which drives the catalog's own progress pill ("Downloading", "Installing", "Launch"). That service still exists on webOS but checks every package against HP's signing servers, gone since 2015, so every install there ends `install failed` / `FAILED_VERIFY`. From 6.2 the catalog picks an install path by where it is running (`main/source/archive-install.js`):
+
+- **Lunacy** (detected by its `org.webosarchive.lunacy` service being on the bus): Lunacy's `com.palm.appInstallService` installs packages as Preware did, install scripts included, so the catalog uses HP's install path unchanged and gets the full progress UI.
+- **webOS**: the catalog installs the package itself (`main/source/direct-install.js`). The download manager fetches it; `ipk-inspect.js` reads its `control.tar.gz`; a package with no install scripts goes to the stock installer, `com.palm.appinstaller/installNoVerify` (a `com.palm.*` app may call it), and its progress is reported to the catalog exactly as the appInstallService's would be. The stock installer runs no `preinst`/`postinst`/`prerm`/`postrm` - only Preware's root helper did - so a package that has any (38 of the archive's 4,300+, mostly webOS Archive's own) is handed to the `.ipk` handler instead. The catalog never registers as an `.ipk` handler and doesn't get in Preware's way.
+- **Anywhere else** (LuneOS), and for packages with scripts: the **`.ipk` handler**. The catalog asks `listAllHandlersForMime` for `application/vnd.webos.ipk`, opens the active handler, then the alternates, then the original Preware by id, each with `{type: "install", file, target}`, until one opens. On LuneOS it launches through SAM (`com.webos.service.applicationmanager/launch`), because LunaAppManager answers `"<id>" was not found` even for an app it launched. From a patch by a Preware 2 developer.
+
+Everything the device does here was measured on a webOS CE 3.1.0 TouchPad: the appInstallService's parameters and states, `installNoVerify`'s replies to a `com.palm.*` app, and the handler list. `ipk-inspect.js` carries a small inflate (webOS 3's browser has none); its script detection was checked against every package in the archive that has scripts, and its inflate against zlib.
+
+Two catalog quirks the install path needed:
+
+- The appInstallService refuses an install with any empty string or without an `authToken` ("Bad parameter"); the catalog's session comes from `DummyConfig`, so its values fill in.
+- A list row is found by its app's id to be redrawn, and fetching an app's details changes that id from the catalog's number to the package id, so a row stayed at "Downloading..." after the app had installed. Rows are now also matched by their `AppDownload`.
+
 ## Self-update
 
-The app checks `http://appcatalog.webosarchive.org/appcatalog-touchpad.json` (a static manifest at the domain root, served over plain HTTP so it works on a freshly-Doctored device before Preware/the community OTA are installed) a few seconds after launch, compares `version` against its own `appinfo.json` version, and prompts to install via Preware if the manifest is newer. See `main/source/archive-patch.js`.
+The app checks `http://appcatalog.webosarchive.org/appcatalog-touchpad.json` (a static manifest at the domain root, served over plain HTTP so it works on a freshly-Doctored device before Preware/the community OTA are installed) a few seconds after launch, compares `version` against its own `appinfo.json` version, and prompts to install through the `.ipk` handler (above) if the manifest is newer - not directly, so the catalog never replaces itself while it runs. See `main/source/archive-patch.js`.

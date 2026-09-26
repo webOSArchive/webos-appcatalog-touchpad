@@ -761,83 +761,8 @@
             });
     };
 
-    // AppInstallService.install: use Preware (applicationManager/open) instead of
-    // com.palm.appInstallService, whose HP/Palm signature verification servers have been
-    // offline since 2015.  Overriding the prototype covers every caller with one patch:
-    //   - DownloadStateManager._install (normal Get flow)
-    //   - AppState.InstallFailed.detailscb (retry flow)
-    //
-    // On success the button resets to Download ("Install") immediately.
-    // Installed state is detected on the next App Catalog launch via the OS app scan.
-    findApps.AppInstallService.prototype.install = function (app, successCb, failureCb) {
-        var self   = this;
-        var ipkUrl = app.packageUrl;
-        console.log("ARCHIVE-PATCH AppInstallService.install via Preware ipkUrl=" + ipkUrl +
-                 " id=" + app.publicApplicationId);
-
-        if (!ipkUrl) {
-            console.log("ARCHIVE-PATCH AppInstallService.install: no packageUrl");
-            return;
-        }
-
-        var rand    = ("" + Date.now()).slice(-6);
-        var svcName = "prewareSvc"  + rand;
-        var okName  = svcName + "Ok";
-        var errName = svcName + "Err";
-
-        function cleanup() {
-            self.owner.$[svcName] && self.owner.$[svcName].destroy();
-            delete self.owner[okName];
-            delete self.owner[errName];
-        }
-
-        // Preware card opened — reset button when App Catalog regains focus.
-        // archivePatchWindowActivated (added to AppCatalogWindow.prototype.create above)
-        // fires onWindowActivated and calls whatever is in window._archivePatchOnActivated.
-        // Also re-keys _myApps from Palm UUID to numeric ID so AppList.serialSearch can
-        // find the row (appList items are stored by numeric ID from transformApp, but
-        // updateFromServer changed publicApplicationId to the Palm UUID).
-        self.owner[okName] = function () {
-            console.log("ARCHIVE-PATCH Preware launched; waiting for onWindowActivated");
-            cleanup();
-            window._archivePatchOnActivated = function () {
-                var numId  = app._archiveNumericId ||
-                             (/^\d+$/.test(String(app.id || "")) ? String(app.id) : null);
-                var palmId = app.publicApplicationId;
-                // updateFromServer changed publicApplicationId from the numeric archive ID to the
-                // Palm UUID (e.g. "com.palm.webos.appscanner"), but _myApps is still keyed by the
-                // numeric ID.  AppDownloadManager.updateDownloadState checks _myApps[publicApplicationId],
-                // so APP_DELETED won't fire unless we restore the numeric ID first.
-                if (numId && palmId !== numId) {
-                    app.publicApplicationId = numId;
-                    console.log("ARCHIVE-PATCH restored publicApplicationId: " + palmId + " -> " + numId);
-                }
-                app.setState("findApps.AppState.Download");
-                console.log("ARCHIVE-PATCH setState(Download) called");
-            };
-        };
-
-        // applicationManager/open failed — Preware is likely not installed.
-        self.owner[errName] = function (inSender, inResponse) {
-            console.log("ARCHIVE-PATCH Preware launch failed (is Preware installed?): " +
-                     JSON.stringify(inResponse));
-            app.errorCode = "PREWARE_NOT_FOUND";
-            app.setState("findApps.AppState.InstallFailed");
-            cleanup();
-        };
-
-        self.owner.createComponent({
-            name:    svcName,
-            kind:    "PalmService",
-            service: "palm://com.palm.applicationManager/",
-            owner:   self.owner
-        });
-
-        self.owner.$[svcName].call(
-            { id: "org.webosinternals.preware", params: { type: "install", file: ipkUrl } },
-            { method: "open", onSuccess: okName, onFailure: errName }
-        );
-    };
+    // AppInstallService.install is archive-install.js's: it installs through Lunacy's
+    // appInstallService, by itself on webOS, or through the .ipk handler (Preware, Preware 2).
 
     // updateFromInstallNotification: the original re-initializes the current state on
     // change="added" without transitioning to Installed.  Override to properly mark the
@@ -857,7 +782,7 @@
     };
 
     // _appInstallServiceStatusCB: when appInstallService reports a stale "install failed"
-    // (left over from FAILED_VERIFY attempts before we switched to Preware), call
+    // (FAILED_VERIFY: HP's signing servers are gone), call
     // appInstallService/cancel to clear the record from the daemon's state.  Without this,
     // the daemon re-broadcasts the failure on every App Catalog launch and may show a
     // system-level notification banner the app cannot suppress from JS alone.
@@ -872,7 +797,9 @@
                  : (inResponse && inResponse.id ? [inResponse] : []);
         for (var i = 0; i < apps.length; i++) {
             var details = apps[i].details || {};
-            if (details.state === "install failed" && apps[i].id) {
+            // Only the daemon's own FAILED_VERIFY records are stale; a failure the catalog's
+            // installer reports (archive-install.js) is the user's to see.
+            if (details.state === "install failed" && details.reason === "FAILED_VERIFY" && apps[i].id) {
                 console.log("ARCHIVE-PATCH canceling stale appInstallService failure for " + apps[i].id);
                 try {
                     this.$.appinstallservice.cancel(
@@ -891,7 +818,7 @@
     // guard for the in-app button state.
     var _origUpdateFromStatus = findApps.AppDownload.prototype.updateFromStatus;
     findApps.AppDownload.prototype.updateFromStatus = function (id, appDetails) {
-        if (appDetails && appDetails.state === "install failed") {
+        if (appDetails && appDetails.state === "install failed" && appDetails.reason === "FAILED_VERIFY") {
             console.log("ARCHIVE-PATCH updateFromStatus: ignoring stale install failed for " + id);
             return;
         }
@@ -934,15 +861,11 @@
         return false;
     }
 
+    // The update goes to the .ipk handler (archive-install.js): the catalog doesn't
+    // replace itself while it runs.
     function installViaPreware(fileUrl) {
         if (!fileUrl) { return; }
-        try {
-            var bridge = new PalmServiceBridge();
-            bridge.call("palm://com.palm.applicationManager/open",
-                JSON.stringify({ id: "org.webosinternals.preware", params: { type: "install", file: fileUrl } }));
-        } catch (e) {
-            console.log("ARCHIVE-PATCH: could not launch Preware install: " + e);
-        }
+        window.archiveInstallWithHandler(fileUrl);
     }
 
     function showUpdatePrompt(manifest) {

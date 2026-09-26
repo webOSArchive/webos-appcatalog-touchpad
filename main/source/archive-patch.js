@@ -13,7 +13,11 @@
         s.textContent =
             // Re-apply the row separator that was previously on .review-list-rows .enyo-row
             // (the hidden "Was this review useful?" row).  Now on the container itself.
-            ".review-list-rows{border-bottom:1px solid #d9d9d9;padding-bottom:9px;}";
+            ".review-list-rows{border-bottom:1px solid #d9d9d9;padding-bottom:9px;}" +
+            // Pivot's pages are laid out for the TouchPad's own screen: each edition page says
+            // width:1024px;height:768px (768 x 1024 in portrait) in its layout. On a wider screen
+            // they sat against the left edge; centered, the page-turn arrows move with them.
+            ".magazinepage>.enyo-view>.enyo-vflexbox{margin-left:auto;margin-right:auto;}";
         document.head.appendChild(s);
     }());
 

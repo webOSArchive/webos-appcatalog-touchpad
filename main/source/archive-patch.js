@@ -22,6 +22,9 @@
     }());
 
     var API_BASE = "https://appcatalog.webosarchive.org/WebService/";
+    // An app's details: how long one request may take, and how many tries an install makes.
+    var DETAILS_TIMEOUT_MS = 15000;
+    var DETAILS_TRIES = 3;
     // Each request gets its own unique key so the server always returns full
     // data and never sends back cached-null entries from a prior request.
     function makeKey() {
@@ -335,7 +338,19 @@
 
         var xhr = new XMLHttpRequest();
         xhr.open("GET", url, true);
+        // A request the network drops can hang for a long time: give it DETAILS_TIMEOUT_MS
+        // (this WebKit has no xhr.timeout), then fail it like any network error.
+        var settled = false;
+        var timer = setTimeout(function () {
+            if (settled) { return; }
+            settled = true;
+            try { xhr.abort(); } catch (e) {}
+            callFailure(inProps, 0, ["DETAIL_NET_ERR"]);
+        }, DETAILS_TIMEOUT_MS);
         xhr.onload = function () {
+            if (settled) { return; }
+            settled = true;
+            clearTimeout(timer);
             if (xhr.status === 200) {
                 var raw;
                 try { raw = JSON.parse(xhr.responseText); } catch (e) {}
@@ -422,7 +437,12 @@
             }
             callFailure(inProps, xhr.status, ["DETAIL_FETCH_FAILED"]);
         };
-        xhr.onerror = function () { callFailure(inProps, 0, ["DETAIL_NET_ERR"]); };
+        xhr.onerror = function () {
+            if (settled) { return; }
+            settled = true;
+            clearTimeout(timer);
+            callFailure(inProps, 0, ["DETAIL_NET_ERR"]);
+        };
         xhr.send();
     };
 
@@ -754,14 +774,35 @@
         app._archiveNumericId = lookupId;
         console.log("ARCHIVE-PATCH _fetchAppDetails palmId=" + app.publicApplicationId +
                  " lookupId=" + lookupId);
+        this._archiveFetchDetails(app, lookupId, callback, 0);
+    };
+
+    // The details an install needs, asked for up to DETAILS_TRIES times: a dropped request was
+    // the whole install failing with "an unexpected problem". (On webOS installs don't come
+    // here: archive-install.js's webosInstall fetches them, and hands failures to Preware.)
+    findApps.DownloadStateManager.prototype._archiveFetchDetails = function (app, lookupId, callback, attempt) {
+        var self = this;
         findApps.BaseServer.getACServer().getApplicationDetails(
             null, lookupId,
             enyo.g11n.currentLocale().toISOString(), "GDBAppDetailsSvc", true, {
-                onResponse: "detailscb",
+                onResponse: "_archiveDetailsCB",
                 scope: this,
                 app: app,
-                callback: callback
+                callback: callback,
+                lookupId: lookupId,
+                attempt: attempt
             });
+    };
+    findApps.DownloadStateManager.prototype._archiveDetailsCB = function (inSender, inResponse, inRequest, props, errors) {
+        var failed = errors && errors.length > 0;
+        if (!failed) { return this.detailscb(inSender, inResponse, inRequest, props, errors); }
+        var app = props.app, next = props.attempt + 1, self = this;
+        console.log("ARCHIVE-PATCH details for " + props.lookupId + " failed (" + errors + "), try " + next + " of " + DETAILS_TRIES);
+        if (next < DETAILS_TRIES) {
+            setTimeout(function () { self._archiveFetchDetails(app, props.lookupId, props.callback, next); }, 1000 * next);
+            return;
+        }
+        this.detailscb(inSender, inResponse, inRequest, props, errors);
     };
 
     // AppInstallService.install is archive-install.js's: it installs through Lunacy's

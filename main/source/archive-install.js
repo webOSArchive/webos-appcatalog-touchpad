@@ -12,8 +12,9 @@
  *              com.palm.appinstaller/installNoVerify (open to a com.palm.* app) installs it,
  *              reporting to the same progress pill as the appInstallService would have. The
  *              stock installer runs no install scripts, so a package that has any
- *              (IpkInspect) is handed to the .ipk handler instead - Preware, Preware 2 -
- *              and so is any package whose direct install fails or throws, at any step.
+ *              (IpkInspect) goes to Preware instead - and so does every install that fails
+ *              or stalls at any step, from the tap on: webOS's users install with Preware,
+ *              and the catalog must never be where an install fails (see webosInstall).
  *              The catalog never registers as an .ipk handler itself.
  *   other   -- LuneOS, or anywhere the above aren't there: the .ipk handler.
  *
@@ -168,7 +169,25 @@
         return p;
     }
 
-    // ---- webOS: the catalog installs it itself ----
+    // ---- webOS: the catalog installs it itself, and anything that goes wrong goes to Preware ----
+    //
+    // webOS users have installed with Preware for fourteen years, so on webOS the catalog may
+    // only ever *add* a way to install: anything that goes wrong in its own install ends in
+    // Preware, never in a catalog error. Every install reaches webosInstall - the Install,
+    // Update and Retry taps through AppDownload.install, and the catalog's own install calls
+    // through AppInstallService.install - and there:
+    //   - HP's checks before an install (embargo, location, space, connection, payment) are
+    //     skipped: they were HP's store's, and any that would fail now is Preware's to report;
+    //   - the package's URL comes from the app's details if the catalog hasn't got it,
+    //     asked for up to DETAILS_TRIES times;
+    //   - the install runs (DirectInstall), watched: no progress for STALL_MS ends it;
+    //   - a throw anywhere, a download or install that fails, install scripts, no details, a
+    //     stall: the install stops and the package goes to Preware, once (handToPreware).
+    // The only failure the catalog shows is Preware not being there at all.
+
+    var DETAILS_TRIES = 3;
+    var STALL_MS = 90000;          // a download that stops moving
+    var INSTALL_STALL_MS = 300000; // the installer, which can't be stopped once it has it
 
     // Reports to the catalog as appInstallService's status subscription would:
     // {id, details: {…, state, progress}}, through the download manager's own callback.
@@ -186,32 +205,124 @@
         };
     }
 
-    // Anything that goes wrong here - a throw, now or in a later callback, or a download or
-    // install that fails - hands the package to the .ipk handler instead, once.
-    function installDirectly(adm, app) {
-        var handedOff = false;
-        function handOff(why) {
-            if (handedOff) { return; }
-            handedOff = true;
-            console.log("ARCHIVE-INSTALL direct install of " + app.publicApplicationId + " gave up (" + why + "): handing it to the .ipk handler");
-            installWithHandler(app, app.packageUrl);
+    // The package's id, if the catalog knows it: before its details arrive an app is known by
+    // its numeric catalog id only.
+    function packageId(app) {
+        var id = String(app.publicApplicationId || "");
+        return (id && !/^\d+$/.test(id)) ? id : null;
+    }
+
+    // Preware, with the most it can be told: the package to install; else the package's page
+    // from its feeds ({type: "view", id}); else Preware itself (its own launch for that is
+    // {source: "updateNotification"} - an empty launch opens nothing). Preware 1.9's
+    // AppAssistant.handleLaunch, read on the reference TouchPad.
+    function handToPreware(app, why) {
+        console.log("ARCHIVE-INSTALL handing " + (app.publicApplicationId || "?") + " to Preware: " + why);
+        if (app.packageUrl) { installWithHandler(app, app.packageUrl); return; }
+        var id = packageId(app);
+        var params = id ? {type: "view", id: id} : {source: "updateNotification"};
+        ipkHandlerCandidates(function (ids) {
+            var n = 0;
+            function next() {
+                if (n >= ids.length) {
+                    console.log("ARCHIVE-INSTALL no .ipk handler could be opened");
+                    app.errorCode = "PREWARE_NOT_FOUND";
+                    try { app.setState("findApps.AppState.InstallFailed"); } catch (e) {}
+                    return;
+                }
+                var handler = ids[n++];
+                launchApp(handler, params, function (r) {
+                    if (!(r && r.returnValue)) { next(); return; }
+                    console.log("ARCHIVE-INSTALL " + handler + " opened with " + JSON.stringify(params));
+                    window._archivePatchOnActivated = function () {
+                        try { app.setState("findApps.AppState.Download"); } catch (e) {}
+                    };
+                });
+            }
+            next();
+        });
+    }
+
+    // The package's URL, from the app's details if the catalog hasn't got it yet.
+    // go() once it is known; fail(why) if it can't be.
+    function withPackage(app, go, fail) {
+        if (app.packageUrl) { go(); return; }
+        var numeric = app._archiveNumericId ||
+                      (/^\d+$/.test(String(app.publicApplicationId || "")) ? String(app.publicApplicationId) :
+                       /^\d+$/.test(String(app.id || "")) ? String(app.id) : String(app.publicApplicationId || ""));
+        app._archiveNumericId = numeric;
+        var attempt = 0;
+        function ask() {
+            attempt++;
+            var scope = {got: function (s, response, req, props, errors) {
+                try {
+                    var detail = response && response.OutGetAppDetailV2 && response.OutGetAppDetailV2.appDetail;
+                    if ((errors && errors.length) || !detail) {
+                        if (attempt < DETAILS_TRIES) { setTimeout(ask, 1000 * attempt); return; }
+                        fail("no details for " + numeric + " (" + errors + ")");
+                        return;
+                    }
+                    app.updateFromServer(detail);
+                    if (!app.packageUrl) { fail("details for " + numeric + " name no package"); return; }
+                    go();
+                } catch (e) {
+                    fail(String(e));
+                }
+            }};
+            findApps.BaseServer.getACServer().getApplicationDetails(null, numeric,
+                enyo.g11n.currentLocale().toISOString(), "GDBAppDetailsSvc", true,
+                {onResponse: "got", scope: scope});
         }
-        try {
+        ask();
+    }
+
+    function webosInstall(adm, app) {
+        if (app._archiveInstalling) { return; }
+        app._archiveInstalling = true;
+        var over = false, job = null, stall = null;
+        function end() { over = true; clearTimeout(stall); app._archiveInstalling = false; }
+        function handOff(why) {
+            if (over) { return; }
+            end();
+            if (job) { try { job.abort(); } catch (e) {} }
+            try { handToPreware(app, why); } catch (e) { console.log("ARCHIVE-INSTALL handing to Preware threw: " + e); }
+        }
+        function watch(ms) {
+            clearTimeout(stall);
+            stall = setTimeout(function () { handOff("no progress for " + (ms / 1000) + " s"); }, ms);
+        }
+        function start() {
             var params = installParams(app);
             var report = reporter(adm, params);
-            DirectInstall.run(params, function (state, progress, extra) {
-                if (handedOff) { return; }
+            console.log("ARCHIVE-INSTALL installing " + params.id + " directly: " + params.ipkUrl);
+            watch(STALL_MS);
+            job = DirectInstall.run(params, function (state, progress, extra) {
+                if (over) { return; }
                 if (state === "download failed" || state === "install failed") {
                     handOff(state + (extra && extra.reason ? ", " + extra.reason : ""));
                     return;
                 }
-                report(state, progress, extra);
+                if (state === "installed") {
+                    // Installed: whatever the catalog's own display does now, it's done.
+                    end();
+                    try { report(state, progress, extra); } catch (e) { console.log("ARCHIVE-INSTALL showing installed threw: " + e); }
+                    return;
+                }
+                watch(state === "installing" ? INSTALL_STALL_MS : STALL_MS);
+                try { report(state, progress, extra); } catch (e) { handOff(String(e)); }
             }, function (scripts) {
                 // Only Preware's root helper runs install scripts.
                 handOff(scripts ? "install scripts: " + scripts : "package couldn't be read");
             }, function (e) {
                 handOff(String(e));
             });
+        }
+        try {
+            try { app.setState("findApps.AppState.InitiatingDownload"); } catch (e) {}
+            withPackage(app, function () {
+                if (over) { return; }
+                try { start(); } catch (e) { handOff(String(e)); }
+            }, handOff);
         } catch (e) {
             handOff(String(e));
         }
@@ -223,23 +334,44 @@
     // installing is DownloadStateManager's own, whose owner is the state manager, so the
     // download manager is further up; the one the window made is the fallback.
     function downloadManager(service) {
-        for (var o = service.owner; o; o = o.owner) {
+        for (var o = service && service.owner; o; o = o.owner) {
             if (typeof o._appInstallServiceStatusCB === "function") { return o; }
         }
         return enyo.application.appdownloadManager;
     }
 
-    // Every caller installs through AppInstallService.install: DownloadStateManager._install
-    // (the normal Get flow) and AppState.InstallFailed's retry.
+    // Every install tap - Install, Update, Retry - is AppDownload.install, which hands the app to
+    // its state; on webOS it goes to webosInstall instead, before any of HP's checks.
+    var _origAppInstall = findApps.AppDownload.prototype.install;
+    findApps.AppDownload.prototype.install = function () {
+        if (platform !== "webos" || !this._state || !this._state.install) {
+            return _origAppInstall.apply(this, arguments);
+        }
+        console.log("ARCHIVE-INSTALL install tapped for " + this.publicApplicationId + " on webos");
+        webosInstall(downloadManager(null), this);
+    };
+
+    // An update installed from the updates list: the same.
+    var _origInstallUpdate = findApps.AppDownload.prototype.installUpdate;
+    findApps.AppDownload.prototype.installUpdate = function () {
+        if (platform !== "webos" || !this._state || !this._state.installUpdate) {
+            return _origInstallUpdate.apply(this, arguments);
+        }
+        webosInstall(downloadManager(null), this);
+    };
+
+    // The catalog's own install calls (DownloadStateManager._install, the retry states) come
+    // through AppInstallService.install.
     findApps.AppInstallService.prototype.install = function (app, successCb, failureCb) {
         var ipkUrl = app.packageUrl;
         console.log("ARCHIVE-INSTALL install " + app.publicApplicationId + " on " + platform + ": " + ipkUrl);
-        if (!ipkUrl) { return; }
-        if (platform === "lunacy") {
+        if (platform === "webos") {
+            webosInstall(downloadManager(this), app);
+        } else if (!ipkUrl) {
+            return;
+        } else if (platform === "lunacy") {
             this.subscribe = false;
             this.call(installParams(app), {method: "install", onSuccess: successCb, onFailure: failureCb});
-        } else if (platform === "webos") {
-            installDirectly(downloadManager(this), app);
         } else {
             installWithHandler(app, ipkUrl);
         }

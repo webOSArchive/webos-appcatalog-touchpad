@@ -16,6 +16,8 @@
  *     onScripts(list): the package has install scripts (list), or couldn't be read (null)
  *     onError(e): something threw in one of the install's callbacks (optional); the install
  *       stops there and reports nothing more
+ *   returns {abort()}: stops the install where it is and reports nothing more - a download is
+ *     cancelled and its file deleted. An install already handed to the installer runs on.
  *
  * No framework of its own, so a probe app can run it as it is (Workbench/probe in Lunacy).
  */
@@ -60,7 +62,8 @@ var DirectInstall = (function () {
     }
 
     function run(params, report, onScripts, onError) {
-        var ticket = null, lastPct = -1, broken = false;
+        var ticket = null, lastPct = -1, broken = false, downloaded = false;
+        var bridges = [];
         console.log("DIRECT-INSTALL installing " + params.id + " from " + params.ipkUrl);
 
         // The bus and XHR callbacks run outside any caller's try, so each is wrapped here.
@@ -87,7 +90,7 @@ var DirectInstall = (function () {
         }
 
         report("ipk download current", 0);
-        lunaCall("palm://com.palm.downloadmanager/download", {
+        bridges.push(lunaCall("palm://com.palm.downloadmanager/download", {
             target: params.ipkUrl, targetDir: DOWNLOAD_DIR, subscribe: true
         }, guard(function (r, stop) {
             if (r.returnValue === false) {
@@ -107,6 +110,7 @@ var DirectInstall = (function () {
             }
             if (r.completed) {
                 stop();
+                downloaded = true;
                 if (r.completionStatusCode !== 200 && r.httpStatus !== 200) {
                     forget();
                     report("download failed", 0, {errorCode: -5, reason: "Http error"});
@@ -120,10 +124,23 @@ var DirectInstall = (function () {
                         onScripts(scripts);
                         return;
                     }
-                    installFile(path, report, forget, params, guard);
+                    bridges.push(installFile(path, report, forget, params, guard));
                 }));
             }
-        }), true);
+        }), true));
+
+        return {
+            abort: function () {
+                if (broken) { return; }
+                broken = true;
+                console.log("DIRECT-INSTALL " + params.id + " aborted");
+                for (var i = 0; i < bridges.length; i++) { try { bridges[i].cancel(); } catch (e) {} }
+                if (ticket !== null && !downloaded) {
+                    lunaCall("palm://com.palm.downloadmanager/cancelDownload", {ticket: ticket}, function () {});
+                }
+                try { forget(); } catch (e) {}
+            }
+        };
     }
 
     // com.palm.appinstaller/installNoVerify, measured on the reference TouchPad as App Catalog:
@@ -131,7 +148,7 @@ var DirectInstall = (function () {
     // IPKG_INSTALL and SUCCESS (or a FAILED_… status).
     function installFile(path, report, forget, params, guard) {
         report("installing", 0);
-        lunaCall("palm://com.palm.appinstaller/installNoVerify", {target: path, subscribe: true}, guard(function (r, stop) {
+        return lunaCall("palm://com.palm.appinstaller/installNoVerify", {target: path, subscribe: true}, guard(function (r, stop) {
             if (r.returnValue === false) {
                 stop(); forget();
                 report("install failed", 0, {reason: r.errorText || "FAILED_IPKG_INSTALL"});

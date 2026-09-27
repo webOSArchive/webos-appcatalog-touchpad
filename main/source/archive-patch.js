@@ -260,6 +260,22 @@
             url = API_BASE + "getMuseumMaster.php?vendorId=" +
                   encodeURIComponent(params.developerId) +
                   "&hide_missing=true&key=" + makeKey();
+        } else if ((service === "SearchAppsService" || service === "SearchMoreAppsService") &&
+                   params.provides && !params.queryStr) {
+            // "Find More…" from Exhibition (dockMode), Just Type (universalSearch)
+            // or Accounts (connector/CONTACTS, …): a filtered search with no text.
+            // SearchApps joins connectorInfo.types into params.provides; the server
+            // matches any of them. Paged like a category list (startPosition/count).
+            var fPageSize = params.count || AppCatalog.Config.defaultPageSize;
+            var fPage     = Math.floor((params.startPosition || 0) / fPageSize);
+            url = API_BASE + "getMuseumMaster.php?" +
+                  "device=All" +
+                  "&provides=" + encodeURIComponent(params.provides) +
+                  "&page=" + fPage +
+                  "&count=" + fPageSize +
+                  "&key=" + makeKey() +
+                  "&hide_missing=true" +
+                  "&sort=" + (params.sort === "NAME_ASC" ? "alpha" : "recent");
         } else if (service === "SearchAppsService" || service === "SearchMoreAppsService") {
             url = API_BASE + "getSearchResults.php?app=" +
                   encodeURIComponent(params.queryStr || "");

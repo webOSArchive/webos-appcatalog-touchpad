@@ -59,7 +59,8 @@
         };
     }());
 
-    var API_BASE = "https://appcatalog.webosarchive.org/WebService/";
+    var API_BASE = "http://appcatalog.webosarchive.org/WebService/";
+    window.archiveApiBase = API_BASE;   // for archive-install.js (loads after this file)
     // An app's details: how long one request may take, and how many tries an install makes.
     var DETAILS_TIMEOUT_MS = 15000;
     var DETAILS_TRIES = 3;

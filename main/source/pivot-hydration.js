@@ -9,7 +9,7 @@
 (function () {
     "use strict";
 
-    var PIVOT_BASE_URL = "https://appcatalog.webosarchive.org/pivot";
+    var PIVOT_BASE_URL = "http://appcatalog.webosarchive.org/pivot";
     var PIVOT_CACHE_ROOT = "/media/internal/.pivot";
     var SUPPORTED_LANGS = ["de", "en", "es", "fr", "it"];
 

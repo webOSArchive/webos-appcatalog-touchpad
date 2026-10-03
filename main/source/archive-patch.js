@@ -771,6 +771,49 @@
     }
 
     // -----------------------------------------------------------------------
+    // LuneOS: no magazine
+    //
+    // Pivot can't be shown on LuneOS: the edition is hydrated to
+    // /media/internal/.pivot and read back through file:// requests, which
+    // LuneOS's web app manager refuses outside the app's own folder ("Access
+    // is blocked to resource"). The catalog then sat on a grey scrim at launch
+    // and again whenever Featured was tapped. Open on the browser view instead,
+    // and take Featured out of the navigation bar. pivot-hydration.js skips the
+    // download there for the same reason.
+    //
+    // Same user-agent test as archive-install.js: legacy webOS says
+    // "webOS/1.x-3.x" or "hpwOS/", LuneOS says neither. Unchanged on webOS.
+    // -----------------------------------------------------------------------
+    var IS_LEGACY_WEBOS_UA = /hpwOS\/|webOS\/[1-3]\./.test(navigator.userAgent);
+    if (!IS_LEGACY_WEBOS_UA) {
+        var _origShowView = findApps.AppCatalogWindow.prototype.showView;
+        findApps.AppCatalogWindow.prototype.showView = function (params) {
+            params = params || {};
+            var v = params.viewToLoad;
+            if (v === undefined || v === "" || v === "default" || v === "MAGAZINE") {
+                console.log("ARCHIVE-PATCH LuneOS: opening BROWSER instead of " + (v || "default"));
+                params.viewToLoad = "BROWSER";
+            }
+            return _origShowView.call(this, params);
+        };
+
+        // Featured (tab 0) opens the magazine too: hide it, and send anything
+        // that still selects it to Categories.
+        var _origNavCreate = findApps.NavigationBar.prototype.create;
+        findApps.NavigationBar.prototype.create = function () {
+            _origNavCreate.apply(this, arguments);
+            var tabs = this.$.navigationButtons && this.$.navigationButtons.getControls();
+            if (tabs && tabs[0]) {
+                tabs[0].setShowing(false);
+            }
+        };
+        var _origSwitchToView = findApps.NavigationBar.prototype.switchToView;
+        findApps.NavigationBar.prototype.switchToView = function (selected) {
+            return _origSwitchToView.call(this, selected === 0 ? 1 : selected);
+        };
+    }
+
+    // -----------------------------------------------------------------------
     // Window-activation hook
     //
     // ApplicationEvents needs to live on a rendered Control to reliably receive
